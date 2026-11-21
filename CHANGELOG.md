@@ -2,6 +2,12 @@
 
 What's new in 555, version by version. The latest is at the top.
 
+## 0.4.1 — 2026-11-21
+
+### Fixes
+
+- iPhone and iPad: replace the old 555 home-screen icon with the Veloly logo.
+
 ## 0.4.0 — 2026-11-18
 
 ### New
