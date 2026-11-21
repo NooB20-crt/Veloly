@@ -1,0 +1,73 @@
+//! Cœur de yato : tout ce qui ne dépend pas de l'interface.
+//!
+//! - [`model`]   : les types partagés (morceau, emplacement du son)
+//! - [`collection`] : titres likés, playlists et historique
+//! - [`discover`] : recommandations de la page Découvrir
+//! - [`stats`]   : journal des écoutes et statistiques (page Stats, récap de l'année)
+//! - [`searches`] : recherches récentes
+//! - [`import`]  : import de playlists (Spotify, Deezer, YouTube Music)
+//! - [`source`]  : le trait [`source::MusicSource`] que chaque source de musique implémente
+//! - [`sources`] : les sources fournies (bibliothèque locale, Deezer pour les infos, YouTube Music pour le son)
+//! - [`stream`]  : lecteur HTTP progressif (la lecture démarre avant la fin du téléchargement)
+//! - [`player`]  : moteur de lecture + file d'attente
+//! - [`fx`]      : égaliseur, réverbération et mesure du son (visualiseur)
+//! - [`output`]  : appareils de sortie audio (haut-parleurs, casque, Bluetooth, AirPlay…)
+//!
+//! L'interface (Tauri aujourd'hui, autre chose demain) ne fait qu'appeler ce crate.
+
+pub mod collection;
+pub mod discover;
+pub mod fx;
+pub mod error;
+pub mod import;
+pub mod lyrics;
+pub mod model;
+pub mod output;
+pub mod player;
+pub mod searches;
+pub mod source;
+pub mod sources;
+pub mod stats;
+pub mod stream;
+pub mod timing;
+pub mod ytdlp;
+
+pub use collection::{Collection, CollectionData, Played, Playlist, load_json};
+pub use error::{Error, Result};
+pub use searches::RecentSearches;
+pub use stats::{ListenLog, ListenTracker, Period, Stats};
+/// Le client HTTP partagé (même version pour l'interface que pour le cœur).
+pub use reqwest;
+pub use model::{ArtistRef, Location, Track};
+pub use output::{OutputDevice, output_devices};
+pub use player::{Controller, QueueItem, Repeat, Session, Snapshot, Status};
+pub use source::{MusicSource, SourceInfo, SourceRegistry, StreamData};
+
+fn music_service_host(host: &str) -> bool {
+    [
+        "deezer.com", "deezer.page.link", "dzcdn.net", "jamendo.com", "youtube.com", "youtu.be", "googlevideo.com", "googleusercontent.com",
+        "ggpht.com", "ytimg.com", "spotify.com", "scdn.co", "spotifycdn.com", "spotify.link", "lrclib.net", "music.163.com",
+    ]
+    .iter()
+    .any(|domain| host == *domain || host.ends_with(&format!(".{domain}")))
+}
+
+/// Client HTTP partagé par toutes les sources (connexions réutilisées = requêtes plus rapides).
+pub fn http_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .user_agent(concat!("yato/", env!("CARGO_PKG_VERSION")))
+        .redirect(reqwest::redirect::Policy::custom(|attempt| {
+            if attempt.previous().len() < 10 && attempt.url().host_str().is_some_and(music_service_host) {
+                attempt.follow()
+            } else {
+                attempt.stop()
+            }
+        }))
+        .connect_timeout(std::time::Duration::from_secs(10))
+        // Délai entre deux lectures, pas sur la requête entière : un long flux audio continue
+        // tant que les données arrivent, une connexion figée est coupée au bout de 30 s.
+        .read_timeout(std::time::Duration::from_secs(30))
+        .pool_idle_timeout(std::time::Duration::from_secs(90))
+        .build()
+        .expect("client HTTP")
+}

@@ -1,0 +1,42 @@
+//! Réglages de l'app et écoute en cours, gardés dans de petits fichiers JSON.
+
+use std::{fs, path::Path};
+
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
+
+/// Ce que l'utilisateur règle dans la page Réglages.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Settings {
+    /// Fondu enchaîné entre deux morceaux, en secondes (0 : aucun).
+    pub crossfade: f64,
+    /// Reprendre l'écoute (file, morceau, position) au lancement.
+    pub resume: bool,
+    /// Égaliseur, réverbération et vitesse.
+    pub fx: yato_core::fx::FxSettings,
+    /// Sortie audio choisie (identifiant) ; `None` : celle du système.
+    pub output_device: Option<String>,
+    /// Identifiant public d'application Jamendo, fourni par son portail développeur.
+    pub jamendo_client_id: Option<String>,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self { crossfade: 0.0, resume: true, fx: Default::default(), output_device: None, jamendo_client_id: None }
+    }
+}
+
+/// Lit un fichier JSON ; valeur par défaut s'il n'existe pas (mis de côté s'il est illisible).
+pub fn load<T: DeserializeOwned + Default>(path: &Path) -> T {
+    yato_core::load_json(path)
+}
+
+/// Écrit un fichier JSON d'un coup (fichier temporaire puis renommage : jamais à moitié écrit).
+pub fn save<T: Serialize>(path: &Path, value: &T) -> std::io::Result<()> {
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir)?;
+    }
+    let tmp = path.with_extension("json.tmp");
+    fs::write(&tmp, serde_json::to_vec(value).map_err(std::io::Error::other)?)?;
+    fs::rename(tmp, path)
+}

@@ -1,0 +1,48 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Veloly",
+  "version": "../package.json",
+  "identifier": "app.yato.player",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Veloly",
+        "width": 1240,
+        "height": 780,
+        "minWidth": 880,
+        "minHeight": 560,
+        "backgroundColor": "#050014"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' data: blob: https://e-cdns-images.dzcdn.net https://cdn-images.dzcdn.net https://cdns-images.dzcdn.net https://usercontent.jamendo.com https://lh3.googleusercontent.com https://yt3.ggpht.com https://yt3.googleusercontent.com https://i.ytimg.com https://i.scdn.co https://mosaic.scdn.co https://image-cdn-ak.spotifycdn.com http://cover.localhost cover:; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost; font-src 'self' data:"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "app",
+      "dmg",
+      "nsis"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "android": {
+      "minSdkVersion": 26
+    },
+    "iOS": {
+      "minimumSystemVersion": "15.0"
+    }
+  }
+}

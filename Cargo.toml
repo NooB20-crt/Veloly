@@ -1,0 +1,22 @@
+[workspace]
+resolver = "3"
+members = ["crates/yato-core", "app/src-tauri"]
+
+[workspace.package]
+version = "0.4.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
+opt-level = 3
+
+[profile.dev.package."*"]
+# Les dépendances (décodeurs audio surtout) restent rapides même en debug.
+opt-level = 2
+
+[profile.dev.package.yato-core]
+# Les effets (égaliseur, réverbération) traitent chaque échantillon : trop lents sans optimisation.
+opt-level = 2

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
+    <meta name="theme-color" content="#050014" />
+    <title>Veloly</title>
+    <style>
+      /*
+       * Écran de lancement : le nom Veloly apparaît dans une lueur violette, puis
+       * s'efface quand l'accueil est prêt (voir src/splash.ts). En ligne dans la page : il
+       * s'affiche avant même le chargement du JavaScript.
+       */
+      html, body { background: #050014; }
+      #splash {
+        position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; pointer-events: none;
+        background: radial-gradient(circle at 50% 50%, rgba(151, 24, 237, 0.3), transparent 62vmin), #000;
+        transition: opacity 0.55s cubic-bezier(0.5, 0, 0.75, 0.25), filter 0.55s cubic-bezier(0.5, 0, 0.75, 0.25);
+      }
+      #splash img { width: min(46vw, 230px); height: auto; border-radius: 22%; overflow: visible; animation: splash-glow 1.6s ease-out 0.75s both; }
+      #splash.out { opacity: 0; filter: blur(14px); }
+      #splash.out svg { transform: scale(1.08); transition: transform 0.55s cubic-bezier(0.5, 0, 0.75, 0.25); }
+      @keyframes splash-glow {
+        0% { filter: drop-shadow(0 0 0 rgba(209, 122, 255, 0)); }
+        40% { filter: drop-shadow(0 0 28px rgba(209, 122, 255, 0.95)); }
+        100% { filter: drop-shadow(0 0 14px rgba(151, 24, 237, 0.6)); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #splash img { animation: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="splash" aria-hidden="true">
+      <img src="/icon.png" alt="" />
+    </div>
+    <div id="root"></div>
+    <script type="module" src="/src/index.tsx"></script>
+  </body>
+</html>

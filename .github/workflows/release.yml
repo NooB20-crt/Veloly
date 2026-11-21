@@ -1,0 +1,229 @@
+# Publishes a 555 release: builds the app for macOS (Apple Silicon and Intel, one file) and
+# Windows, creates the GitHub Release for the tag with the installers, and `latest.json`,
+# which 555 reads for its automatic updates. Then adds the Android APK to the same release, and
+# the iPhone/iPad .ipa with its SideStore source (`555-sidestore.json`: SideStore reads it to
+# offer the update on the phone).
+#
+# To publish: `./scripts/release.sh 0.2.0`, then push the commit and the tag.
+# Required secrets (Settings → Secrets and variables → Actions):
+#   TAURI_SIGNING_PRIVATE_KEY           contents of ~/.tauri/yato.key
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  contents of ~/.tauri/yato.key.password
+#   ANDROID_KEYSTORE_BASE64             base64 of ~/.tauri/555-android.jks (signs the APK)
+#   ANDROID_KEYSTORE_PASSWORD           contents of ~/.tauri/555-android.password
+name: Publish a release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-latest
+            rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
+            args: --target universal-apple-darwin
+          - name: Windows
+            os: windows-latest
+            rust-targets: ""
+            args: ""
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check that the tag matches the version
+        shell: bash
+        run: |
+          version=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\(.*\)"/\1/p' Cargo.toml)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match version $version in Cargo.toml"
+            exit 1
+          fi
+
+      # The release text starts with this version's section of CHANGELOG.md (“## X.Y.Z — date”).
+      - name: Release notes from the changelog
+        id: notes
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          notes=$(awk -v v="$version" '/^## /{ if (f) exit; f = ($2 == v); next } f' CHANGELOG.md | sed -e '/./,$!d')
+          if [ -z "$notes" ]; then
+            echo "::warning::No section “## $version” in CHANGELOG.md: the release has no changelog."
+          fi
+          { echo "body<<__NOTES__"; echo "$notes"; echo "__NOTES__"; } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-targets }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.name }}
+
+      - name: Frontend dependencies
+        working-directory: app
+        run: npm ci
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: app
+          tagName: ${{ github.ref_name }}
+          releaseName: Veloly ${{ github.ref_name }}
+          releaseBody: |
+            ${{ steps.notes.outputs.body }}
+
+            ---
+
+            **macOS**: `555_…_universal.dmg` (Apple Silicon and Intel). The app isn't signed by Apple: on first launch, right-click 555 → “Open”, or run `xattr -cr /Applications/555.app`.
+            **Windows**: `555_…_x64-setup.exe`. If Windows says “Windows protected your PC”: “More info” → “Run anyway”.
+            **Android** (8 or later): `555_…_android.apk`. Open it on the phone and allow your browser or file manager to install apps. 555 isn't on the Play Store, so Play Protect may warn you: “More details” → “Install anyway”. To update, install the new APK over the old one.
+            **iPhone and iPad** (iOS 15 or later): `555_…_ios.ipa`, installed with SideStore. Guide: https://555.amon.lol/ios.html
+
+            Once installed, 555 updates itself (on iPhone, SideStore offers the update).
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}
+
+  # The release exists once the desktop builds are done: the APK is added to it.
+  android:
+    name: Android
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      NDK_VERSION: 29.0.14206865
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          key: Android
+
+      - name: Android SDK and NDK
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.0" "ndk;$NDK_VERSION" >/dev/null
+          echo "NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+
+      - name: Frontend dependencies
+        working-directory: app
+        run: npm ci
+
+      - name: Build the APK
+        working-directory: app
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          TC="$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64"
+          # OpenSSL (built with the app) needs the NDK archive tools; QuickJS bindings are generated.
+          export RANLIB_aarch64_linux_android="$TC/bin/llvm-ranlib" AR_aarch64_linux_android="$TC/bin/llvm-ar"
+          export BINDGEN_EXTRA_CLANG_ARGS_aarch64_linux_android="--sysroot=$TC/sysroot"
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/555-android.jks"
+          export ANDROID_KEYSTORE_PATH="$RUNNER_TEMP/555-android.jks"
+          npx tauri android build --apk --target aarch64
+          rm "$RUNNER_TEMP/555-android.jks"
+
+      - name: Add the APK to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          apk="555_${version}_android.apk"
+          cp app/src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk "$apk"
+          gh release upload "$GITHUB_REF_NAME" "$apk" --clobber
+
+  # iPhone and iPad: unsigned .ipa (each user's SideStore signs it with their own Apple Account),
+  # and the SideStore source that points to it. SideStore reads the source from
+  # releases/latest/download/555-sidestore.json and offers the new version on the phone.
+  ios:
+    name: iPhone and iPad
+    needs: build
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          key: iOS
+
+      - name: Frontend dependencies
+        working-directory: app
+        run: npm ci
+
+      # The Xcode project has signing turned off, so Tauri's last step (exporting a signed .ipa)
+      # fails on purpose: the archive it made just before is what we package.
+      - name: Build the app
+        working-directory: app
+        run: |
+          npx tauri ios build --target aarch64 || true
+          test -x src-tauri/gen/apple/build/yato_iOS.xcarchive/Products/Applications/Veloly.app/Veloly
+
+      - name: Package the .ipa and the SideStore source
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          ipa="555_${version}_ios.ipa"
+          mkdir Payload
+          app_bundle=app/src-tauri/gen/apple/build/yato_iOS.xcarchive/Products/Applications/Veloly.app
+          test -x "$app_bundle/Veloly"
+          cp -R "$app_bundle" Payload/
+          plist=Payload/Veloly.app/Info.plist
+          if [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")" != "$version" ]; then
+            echo "::error::The .ipa does not say version $version"
+            exit 1
+          fi
+          zip -qry "$ipa" Payload
+
+          notes=$(awk -v v="$version" '/^## /{ if (f) exit; f = ($2 == v); next } f' CHANGELOG.md | sed -e '/./,$!d')
+          jq -n \
+            --arg version "$version" \
+            --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg url "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/$ipa" \
+            --argjson size "$(stat -f%z "$ipa")" \
+            --arg notes "$notes" \
+            -f .github/sidestore-source.jq > 555-sidestore.json
+          cat 555-sidestore.json
+
+          gh release upload "$GITHUB_REF_NAME" "$ipa" 555-sidestore.json --clobber
