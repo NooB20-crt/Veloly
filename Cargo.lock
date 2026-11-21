@@ -5839,7 +5839,7 @@ dependencies = [
 
 [[package]]
 name = "yato"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "objc2",
  "parking_lot 0.13.0",
@@ -5856,7 +5856,7 @@ dependencies = [
 
 [[package]]
 name = "yato-core"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
