@@ -11,12 +11,12 @@
 </p>
 
 <p align="center">
-  <img src="site/assets/shot-discover.jpg" width="860" alt="555 playing VHS by Mattyeux" />
+  <img src="site/assets/shot-discover.jpg" width="860" alt="Veloly's Discover page with music playing" />
 </p>
 
 <p align="center">
-  <img src="site/assets/shot-lyrics.jpg" width="425" alt="Word-synced lyrics" />
-  <img src="site/assets/shot-artist.jpg" width="425" alt="Artist page" />
+  <img src="site/assets/shot-lyrics.jpg" width="425" alt="Veloly's lyrics and now-playing view" />
+  <img src="site/assets/shot-artist.jpg" width="425" alt="Michael Jackson's artist page in Veloly" />
 </p>
 
 > [!NOTE]
