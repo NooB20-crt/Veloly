@@ -680,6 +680,33 @@ html[data-vt="back"]::view-transition-new(page) { animation: blur-in-back 0.55s 
   .nowplaying.lyrics-mode .np-right { display: block; height: auto; min-height: 0; }
   .nowplaying.lyrics-mode .np-art { display: none; }
 }
+/* Fenêtre étroite et haute (écran vertical) : lecteur compact en haut, paroles juste dessous. */
+@media (min-width: 761px) and (max-width: 1100px) and (min-height: 900px) {
+  .nowplaying { padding: 60px clamp(18px, 5vw, 56px) 36px; }
+  .nowplaying.lyrics-mode .np-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: clamp(14px, 2vh, 26px);
+    align-items: stretch;
+    justify-items: center;
+  }
+  .nowplaying.lyrics-mode .np-left {
+    display: grid;
+    grid-template-columns: minmax(140px, min(22vh, 280px)) minmax(0, 1fr);
+    grid-template-areas: "art meta" "art progress" "art controls";
+    align-items: center;
+    align-self: start;
+    gap: 10px clamp(16px, 2.4vw, 28px);
+    width: 100%;
+    max-width: 860px;
+    max-height: none;
+  }
+  .nowplaying.lyrics-mode .np-art { display: block; grid-area: art; width: 100%; }
+  .nowplaying.lyrics-mode .np-meta { grid-area: meta; }
+  .nowplaying.lyrics-mode .np-left .progress { grid-area: progress; }
+  .nowplaying.lyrics-mode .np-left .buttons { grid-area: controls; justify-content: space-between; gap: clamp(2px, 1vw, 12px); }
+  .nowplaying.lyrics-mode .np-right { display: block; width: 100%; max-width: 860px; height: 100%; min-height: 0; }
+}
 @media (max-width: 900px) {
   :root { --sidebar-w: 76px; }
   .brand span, .nav span, .nav-count { display: none; }
