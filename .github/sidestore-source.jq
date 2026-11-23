@@ -5,8 +5,8 @@
   identifier: "app.yato.player.source",
   subtitle: "A light, fast music player.",
   description: "The iPhone and iPad version of Veloly. Add this source in SideStore to get new versions on your phone.",
-  iconURL: "https://555.amon.lol/assets/apple-touch-icon.png",
-  website: "https://555.amon.lol/",
+  iconURL: "https://noob20-crt.github.io/Veloly/assets/apple-touch-icon.png",
+  website: "https://noob20-crt.github.io/Veloly/",
   tintColor: "#9718ED",
   apps: [
     {
@@ -15,7 +15,7 @@
       developerName: "amonre555",
       subtitle: "A light, fast music player.",
       localizedDescription: "Free and open source music player: search any song, play your own files, import playlists from Spotify, Deezer or YouTube Music, with lyrics and an equalizer.",
-      iconURL: "https://555.amon.lol/assets/apple-touch-icon.png",
+      iconURL: "https://noob20-crt.github.io/Veloly/assets/apple-touch-icon.png",
       tintColor: "#9718ED",
       category: "entertainment",
       versions: [

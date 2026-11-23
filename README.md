@@ -6,8 +6,8 @@
 
 <p align="center">
   A light, fast music player, written in Rust with Tauri.<br />
-  <a href="https://555.amon.lol/">Website</a> ·
-  <a href="https://github.com/amonre555/555/releases/latest">Download</a>
+  <a href="https://noob20-crt.github.io/Veloly/">Website</a> ·
+  <a href="https://github.com/NooB20-crt/Veloly/releases/latest">Download</a>
 </p>
 
 <p align="center">
@@ -21,7 +21,7 @@
 
 > [!NOTE]
 > **Contributions:** 555 is developed by its author alone, so pull requests are turned off.
-> - **Bugs and ideas:** open an [issue](https://github.com/amonre555/555/issues), they're all read.
+> - **Bugs and ideas:** open an [issue](https://github.com/NooB20-crt/Veloly/issues), they're all read.
 > - **Your own version:** you're free to fork 555 and build it your way, under the GPL-3.0.
 
 ## Features
@@ -49,7 +49,7 @@
 
 ## Install
 
-Installers are in the [Releases](https://github.com/amonre555/555/releases): `.dmg` for macOS (Apple Silicon and Intel), `-setup.exe` for Windows. Veloly does not check for or install updates; download and install a new release manually.
+Installers are in the [Releases](https://github.com/NooB20-crt/Veloly/releases): `.dmg` for macOS (Apple Silicon and Intel), `-setup.exe` for Windows. Veloly does not check for or install updates; download and install a new release manually.
 
 The app isn't signed by Apple or Microsoft:
 - **macOS**: on first launch, right-click 555 → "Open" (or `xattr -cr /Applications/555.app`);
@@ -57,7 +57,7 @@ The app isn't signed by Apple or Microsoft:
 
 **Android** (8 or later): `_android.apk` in the same Releases. Open it on the phone and allow your browser or file manager to install apps; Play Protect may warn you since 555 isn't on the Play Store ("More details" → "Install anyway"). To update, install the new APK over the old one. On Android, music keeps playing with the screen off, with the controls on the lock screen and in the notification.
 
-**iPhone and iPad** (iOS 15 or later): `_ios.ipa` in the same Releases, installed with [SideStore](https://sidestore.io), which signs it with your own Apple Account. Step-by-step guide: https://555.amon.lol/ios.html. SideStore renews the app every 7 days and offers updates.
+**iPhone and iPad** (iOS 15 or later): `_ios.ipa` in the same Releases, installed with [SideStore](https://sidestore.io), which signs it with your own Apple Account. Step-by-step guide: https://noob20-crt.github.io/Veloly/ios.html. SideStore renews the app every 7 days and offers updates.
 
 To build it yourself, with an Android phone plugged in (USB debugging on): `sh scripts/android.sh`.
 
