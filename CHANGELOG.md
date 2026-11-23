@@ -2,6 +2,12 @@
 
 What's new in Veloly, version by version. The latest is at the top.
 
+## 0.4.3 — 2026-11-23
+
+### Fixes
+
+- In portrait desktop windows, keep the album cover visible and move the lyrics directly below the compact player controls.
+
 ## 0.4.2 — 2026-11-23
 
 ### New
