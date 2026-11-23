@@ -317,7 +317,7 @@ const cleanQuery = (q: unknown) => String(q).trim().split(/\s+/).join(" ");
 
 // Collection en mémoire (perdue au rechargement de la page).
 const coll: Collection = { liked: [], playlists: [], history: [] };
-let settings = { crossfade: 0, resume: true, fx: { bass: 0, mid: 0, treble: 0, reverb: 0, speed: 1, radio: 0 } };
+let settings: import("./api").Settings = { crossfade: 0, resume: true, offlineOnly: false, customization: { primaryColor: "#9718ed", secondaryColor: "#d17aff" }, outputProfiles: {}, outputDevice: null, fx: { preamp: 0, balance: 0, stereoWidth: 1, normalize: false, limiter: true, channelMode: "stereo", bass: 0, mid: 0, treble: 0, reverb: 0, speed: 1, radio: 0 } };
 let plCounter = 0;
 const copy = (): Collection => structuredClone(coll);
 const pl = (id: string) => {
@@ -342,14 +342,25 @@ const handlers: Record<string, (args: any) => unknown> = {
   clear_history: () => ((coll.history = []), copy()),
   get_settings: () => ({ ...settings }),
   output_devices: () => ({ devices: DEVICES, selected: outputDevice, active: outputDevice ?? DEVICES[0].id }),
-  set_output_device: ({ id }) => ((outputDevice = id), { devices: DEVICES, selected: id, active: id ?? DEVICES[0].id }),
+  set_output_device: ({ id }) => {
+    const oldKey = outputDevice ?? "system";
+    settings.outputProfiles[oldKey] = settings.fx;
+    outputDevice = id;
+    const nextKey = id ?? "system";
+    settings.fx = settings.outputProfiles[nextKey] ?? { ...settings.fx, preamp: 0, balance: 0, stereoWidth: 1, bass: 0, mid: 0, treble: 0, reverb: 0, speed: 1, radio: 0 };
+    return { devices: DEVICES, selected: id, active: id ?? DEVICES[0].id };
+  },
   // Faux niveaux qui battent à ~120 BPM, pour voir le visualiseur sans le vrai son.
   audio_levels: () => {
     const t = performance.now() / 1000;
     const beat = Math.pow(Math.max(0, Math.sin(t * Math.PI * 2)), 8);
     return [0.25 + 0.7 * beat, 0.35 + 0.2 * Math.sin(t * 1.7), 0.2 + 0.15 * Math.sin(t * 5.3), 0.4 + 0.4 * beat];
   },
-  set_settings: ({ value }) => ((settings = { ...value }), { ...settings }),
+  set_settings: ({ value }) => {
+    settings = { ...value, outputProfiles: { ...settings.outputProfiles, ...value.outputProfiles } };
+    settings.outputProfiles[settings.outputDevice ?? "system"] = settings.fx;
+    return { ...settings };
+  },
   set_shuffle: ({ on }) => ((state.shuffle = on), snap()),
   set_repeat: ({ repeat }) => ((state.repeat = repeat), snap()),
   import_playlist: async ({ url }) => {
@@ -390,6 +401,9 @@ const handlers: Record<string, (args: any) => unknown> = {
   list_sources: () => [{ id: "local", name: "Ma bibliothèque" }, { id: "deezer", name: "Titres" }, { id: "youtube", name: "YouTube Music" }],
   library_tracks: () => [],
   library_folders: () => [],
+  library_size: () => 0,
+  library_health: () => ({ missingFiles: 0, missingFolders: [] }),
+  set_offline_mode: ({ enabled }) => ((settings.offlineOnly = enabled), { ...settings }),
   discover: () => demoDiscover(),
   featured: async () => {
     tracks = tracks.length ? tracks : await loadTrending();
@@ -460,6 +474,15 @@ const handlers: Record<string, (args: any) => unknown> = {
     const item = state.upNext.find((q) => q.key === key);
     if (item) list.splice(Math.min(to, list.length), 0, item);
     state.upNext = list;
+    return snap();
+  },
+  move_upcoming: ({ from, to }) => {
+    const list = [...state.upcoming];
+    if (from >= 0 && from < list.length) {
+      const [item] = list.splice(from, 1);
+      list.splice(Math.min(to, list.length), 0, item);
+      state.upcoming = list;
+    }
     return snap();
   },
   clear_queued: () => ((state.upNext = []), snap()),

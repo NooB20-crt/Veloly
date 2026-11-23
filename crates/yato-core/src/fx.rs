@@ -6,11 +6,10 @@
 //! - une mesure du niveau des basses, médiums et aigus, lue par l'interface pour le visualiseur.
 //!
 //! Les réglages vivent dans [`Fx`], partagé entre les deux lecteurs : un changement s'entend
-//! tout de suite, sans recharger le morceau. La vitesse (« slowed », « sped up ») est réglée à
-//! part, sur les lecteurs eux-mêmes.
+//! tout de suite, sans recharger le morceau. La vitesse utilise WSOLA pour préserver la hauteur.
 
 use std::{
-    sync::atomic::{AtomicU32, AtomicU64, Ordering},
+    sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
     time::Duration,
 };
 
@@ -21,6 +20,27 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct FxSettings {
+    /// Préampli avant l'égaliseur, en dB (-12 à +12).
+    #[serde(default)]
+    pub preamp: f32,
+    /// Vitesse de lecture à hauteur constante (0,5 à 1,5).
+    #[serde(default = "default_speed")]
+    pub speed: f32,
+    /// Balance stéréo (-1 à gauche, +1 à droite).
+    #[serde(default)]
+    pub balance: f32,
+    /// Largeur stéréo (0 mono, 1 originale, 2 élargie).
+    #[serde(default = "default_width")]
+    pub stereo_width: f32,
+    /// Égalisation adaptative du niveau moyen d'un morceau.
+    #[serde(default)]
+    pub normalize: bool,
+    /// Réduit en douceur les crêtes qui dépassent le plafond de sécurité.
+    #[serde(default = "default_true")]
+    pub limiter: bool,
+    /// Mode des canaux de sortie.
+    #[serde(default)]
+    pub channel_mode: ChannelMode,
     /// Gain des basses, en dB (-50 à +50).
     pub bass: f32,
     /// Gain des médiums, en dB.
@@ -29,16 +49,28 @@ pub struct FxSettings {
     pub treble: f32,
     /// Quantité de réverbération (0 à 1).
     pub reverb: f32,
-    /// Vitesse de lecture (0,5 à 1,5) ; le son monte ou descend avec, comme un vinyle.
-    pub speed: f32,
     /// Intensité du filtre radio lo-fi (0 à 1).
     #[serde(default)]
     pub radio: f32,
 }
 
+const fn default_width() -> f32 { 1.0 }
+const fn default_true() -> bool { true }
+const fn default_speed() -> f32 { 1.0 }
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ChannelMode {
+    #[default]
+    Stereo,
+    Mono,
+    Left,
+    Right,
+}
+
 impl Default for FxSettings {
     fn default() -> Self {
-        Self { bass: 0.0, mid: 0.0, treble: 0.0, reverb: 0.0, speed: 1.0, radio: 0.0 }
+        Self { preamp: 0.0, speed: 1.0, balance: 0.0, stereo_width: 1.0, normalize: false, limiter: true, channel_mode: ChannelMode::Stereo, bass: 0.0, mid: 0.0, treble: 0.0, reverb: 0.0, radio: 0.0 }
     }
 }
 
@@ -47,11 +79,17 @@ impl FxSettings {
     pub fn clamped(self) -> Self {
         let db = |v: f32| if v.is_finite() { v.clamp(-50.0, 50.0) } else { 0.0 };
         Self {
+            preamp: if self.preamp.is_finite() { self.preamp.clamp(-12.0, 12.0) } else { 0.0 },
+            speed: if self.speed.is_finite() { self.speed.clamp(0.5, 1.5) } else { 1.0 },
+            balance: if self.balance.is_finite() { self.balance.clamp(-1.0, 1.0) } else { 0.0 },
+            stereo_width: if self.stereo_width.is_finite() { self.stereo_width.clamp(0.0, 2.0) } else { 1.0 },
+            normalize: self.normalize,
+            limiter: self.limiter,
+            channel_mode: self.channel_mode,
             bass: db(self.bass),
             mid: db(self.mid),
             treble: db(self.treble),
             reverb: if self.reverb.is_finite() { self.reverb.clamp(0.0, 1.0) } else { 0.0 },
-            speed: if self.speed.is_finite() { self.speed.clamp(0.5, 1.5) } else { 1.0 },
             radio: if self.radio.is_finite() { self.radio.clamp(0.0, 1.0) } else { 0.0 },
         }
     }
@@ -71,8 +109,14 @@ impl AtomicF32 {
 }
 
 /// Réglages en cours et dernière mesure du son, partagés entre les lecteurs et l'interface.
-#[derive(Default)]
 pub struct Fx {
+    preamp: AtomicF32,
+    speed: AtomicF32,
+    balance: AtomicF32,
+    stereo_width: AtomicF32,
+    normalize: AtomicBool,
+    limiter: AtomicBool,
+    channel_mode: AtomicU32,
     bass: AtomicF32,
     mid: AtomicF32,
     treble: AtomicF32,
@@ -84,9 +128,37 @@ pub struct Fx {
     levels: [AtomicF32; 4],
 }
 
+impl Default for Fx {
+    fn default() -> Self {
+        Self {
+            preamp: AtomicF32::default(),
+            speed: AtomicF32(AtomicU32::new(1.0f32.to_bits())),
+            balance: AtomicF32::default(),
+            stereo_width: AtomicF32(AtomicU32::new(1.0f32.to_bits())),
+            normalize: AtomicBool::new(false),
+            limiter: AtomicBool::new(true),
+            channel_mode: AtomicU32::new(0),
+            bass: AtomicF32::default(),
+            mid: AtomicF32::default(),
+            treble: AtomicF32::default(),
+            reverb: AtomicF32::default(),
+            radio: AtomicF32::default(),
+            version: AtomicU64::new(0),
+            levels: Default::default(),
+        }
+    }
+}
+
 impl Fx {
     pub fn set(&self, s: FxSettings) {
         self.bass.set(s.bass);
+        self.preamp.set(s.preamp);
+        self.speed.set(s.speed);
+        self.balance.set(s.balance);
+        self.stereo_width.set(s.stereo_width);
+        self.normalize.store(s.normalize, Ordering::Relaxed);
+        self.limiter.store(s.limiter, Ordering::Relaxed);
+        self.channel_mode.store(match s.channel_mode { ChannelMode::Stereo => 0, ChannelMode::Mono => 1, ChannelMode::Left => 2, ChannelMode::Right => 3 }, Ordering::Relaxed);
         self.mid.set(s.mid);
         self.treble.set(s.treble);
         self.reverb.set(s.reverb);
@@ -293,8 +365,9 @@ pub struct FxSource<S> {
     frames: u64,
     channels: usize,
     rate: u32,
-    /// Canal du prochain échantillon (dans la trame en cours).
-    ch: usize,
+    /// Trame traitée à rendre, un échantillon par appel de `next`.
+    frame: Vec<f32>,
+    frame_pos: usize,
     version: u64,
     eq: [Biquad; 3],
     /// État des 3 filtres, par canal.
@@ -303,10 +376,20 @@ pub struct FxSource<S> {
     reverb: Reverb,
     wet: f32,
     radio: f32,
+    preamp: f32,
+    balance: f32,
+    stereo_width: f32,
+    normalize: bool,
+    limiter: bool,
+    channel_mode: ChannelMode,
+    norm_energy: f32,
+    norm_gain: f32,
+    stretch: Option<wsola::TimeStretch>,
+    stretch_out: Vec<f32>,
+    stretch_pos: usize,
+    stretch_written: usize,
+    stretch_eof: bool,
     radio_state: Vec<[f32; 4]>,
-    /// Somme des canaux de la trame en cours, et réverbération calculée sur la précédente.
-    frame_sum: f32,
-    frame_wet: f32,
     meter: Meter,
 }
 
@@ -324,7 +407,8 @@ impl<S: Source> FxSource<S> {
             frames: 0,
             channels,
             rate,
-            ch: 0,
+            frame: vec![0.0; channels],
+            frame_pos: channels,
             version: u64::MAX,
             eq: [Biquad::FLAT; 3],
             eq_state: vec![[[0.0; 2]; 3]; channels],
@@ -332,9 +416,20 @@ impl<S: Source> FxSource<S> {
             reverb: Reverb::new(rate as f32),
             wet: 0.0,
             radio: 0.0,
+            preamp: 0.0,
+            balance: 0.0,
+            stereo_width: 1.0,
+            normalize: false,
+            limiter: true,
+            channel_mode: ChannelMode::Stereo,
+            norm_energy: 0.0,
+            norm_gain: 1.0,
+            stretch: None,
+            stretch_out: Vec::new(),
+            stretch_pos: 0,
+            stretch_written: 0,
+            stretch_eof: false,
             radio_state: vec![[0.0; 4]; channels],
-            frame_sum: 0.0,
-            frame_wet: 0.0,
             meter: Meter::new(rate as f32),
         };
         s.refresh();
@@ -354,14 +449,42 @@ impl<S: Source> FxSource<S> {
         self.eq_on = [bass, mid, treble].iter().any(|g| g.abs() >= 0.01);
         self.wet = self.fx.reverb.get();
         self.radio = self.fx.radio.get();
+        self.preamp = 10.0f32.powf(self.fx.preamp.get() / 20.0);
+        self.balance = self.fx.balance.get();
+        self.stereo_width = self.fx.stereo_width.get();
+        self.normalize = self.fx.normalize.load(Ordering::Relaxed);
+        self.limiter = self.fx.limiter.load(Ordering::Relaxed);
+        self.channel_mode = match self.fx.channel_mode.load(Ordering::Relaxed) {
+            1 => ChannelMode::Mono,
+            2 => ChannelMode::Left,
+            3 => ChannelMode::Right,
+            _ => ChannelMode::Stereo,
+        };
     }
 
     /// Le format a changé (nouveau segment du fichier) : on repart de filtres vides.
     fn reformat(&mut self, channels: usize, rate: u32) {
+        let was_stretching = self.stretch.is_some();
         self.base += self.frames as f64 / f64::from(self.rate);
         self.frames = 0;
         self.channels = channels;
         self.rate = rate;
+        self.frame = vec![0.0; channels];
+        self.frame_pos = channels;
+        self.stretch = if was_stretching {
+            use std::num::{NonZeroU16, NonZeroU32};
+            match (NonZeroU32::new(rate), NonZeroU16::new(channels.try_into().unwrap_or(0))) {
+                (Some(rate), Some(channels)) => wsola::TimeStretch::new(rate, channels).ok().map(|mut stretch| {
+                    stretch.set_tempo(self.fx.speed.get());
+                    stretch
+                }),
+                _ => None,
+            }
+        } else { None };
+        self.stretch_out.clear();
+        self.stretch_pos = 0;
+        self.stretch_written = 0;
+        self.stretch_eof = false;
         self.eq_state = vec![[[0.0; 2]; 3]; channels];
         self.radio_state = vec![[0.0; 4]; channels];
         self.reverb = Reverb::new(rate as f32);
@@ -369,69 +492,143 @@ impl<S: Source> FxSource<S> {
         self.version = u64::MAX;
         self.refresh();
     }
+
+    /// Décode et traite une trame d'entrée. `false` indique la fin du flux.
+    fn prepare_frame(&mut self) -> bool {
+        let (channels, rate) = (usize::from(self.inner.channels().get()), self.inner.sample_rate().get());
+        if channels != self.channels || rate != self.rate {
+            self.reformat(channels, rate);
+        }
+        self.refresh();
+        for sample in &mut self.frame {
+            let Some(input) = self.inner.next() else { return false };
+            *sample = input;
+        }
+        self.frames += 1;
+        self.clock.set(self.base + self.frames as f64 / f64::from(self.rate));
+
+        for ch in 0..self.channels {
+            let mut y = self.frame[ch] * self.preamp;
+            if self.eq_on {
+                for (f, z) in self.eq.iter().zip(self.eq_state[ch].iter_mut()) {
+                    y = f.run(y, z);
+                }
+            }
+            if self.radio > 0.0 {
+                let state = &mut self.radio_state[ch];
+                let hp_alpha = 1.0 - (-std::f32::consts::TAU * 280.0 / self.rate as f32).exp();
+                let lp_alpha = 1.0 - (-std::f32::consts::TAU * 3600.0 / self.rate as f32).exp();
+                let hp = (1.0 - hp_alpha) * (state[1] + y - state[0]);
+                state[0] = y;
+                state[1] = hp;
+                state[2] += lp_alpha * (hp - state[2]);
+                let lo_fi = (state[2] * 36.0).round() / 36.0;
+                let driven = (lo_fi * 1.35).tanh() / 1.35f32.tanh();
+                y += (driven - y) * self.radio;
+            }
+            self.frame[ch] = y;
+        }
+
+        if self.wet > 0.0 {
+            let mono = self.frame.iter().sum::<f32>() / self.channels as f32;
+            let wet = self.reverb.run(mono) * self.wet;
+            for sample in &mut self.frame { *sample = *sample * (1.0 - 0.35 * self.wet) + wet; }
+        }
+
+        if self.channels >= 2 {
+            match self.channel_mode {
+                ChannelMode::Stereo => {
+                    let mid = (self.frame[0] + self.frame[1]) * 0.5;
+                    let side = (self.frame[0] - self.frame[1]) * 0.5 * self.stereo_width;
+                    self.frame[0] = mid + side;
+                    self.frame[1] = mid - side;
+                    if self.balance > 0.0 { self.frame[0] *= 1.0 - self.balance; }
+                    if self.balance < 0.0 { self.frame[1] *= 1.0 + self.balance; }
+                }
+                ChannelMode::Mono => {
+                    let mono = self.frame.iter().sum::<f32>() / self.channels as f32;
+                    self.frame.fill(mono);
+                }
+                ChannelMode::Left => { let left = self.frame[0]; self.frame.fill(left); }
+                ChannelMode::Right => { let right = self.frame[1]; self.frame.fill(right); }
+            }
+        }
+
+        let mean_square = self.frame.iter().map(|x| x * x).sum::<f32>() / self.channels as f32;
+        let norm_alpha = 1.0 - (-1.0 / (self.rate as f32 * 0.4)).exp();
+        self.norm_energy += (mean_square - self.norm_energy) * norm_alpha;
+        let rms = self.norm_energy.sqrt();
+        if self.normalize && rms > 0.003 {
+            let wanted = (0.16 / rms).clamp(0.25, 4.0);
+            let smoothing = if wanted < self.norm_gain { 0.004 } else { 0.001 };
+            self.norm_gain += (wanted - self.norm_gain) * smoothing;
+        } else if !self.normalize {
+            self.norm_gain = 1.0;
+        }
+        for sample in &mut self.frame {
+            *sample *= self.norm_gain;
+            if self.limiter {
+                let magnitude = sample.abs();
+                if magnitude > 0.92 {
+                    *sample = sample.signum() * (0.92 + 0.08 * (1.0 - (-((magnitude - 0.92) / 0.08)).exp()));
+                }
+            }
+        }
+        self.meter.feed(self.frame.iter().sum::<f32>() / self.channels as f32, &self.fx);
+        true
+    }
 }
 
 impl<S: Source> Iterator for FxSource<S> {
     type Item = Sample;
 
     fn next(&mut self) -> Option<Sample> {
-        if self.ch == 0 {
-            let (channels, rate) = (usize::from(self.inner.channels().get()), self.inner.sample_rate().get());
-            if channels != self.channels || rate != self.rate {
-                self.reformat(channels, rate);
-            }
-            self.refresh();
-            // Réverbération de la trame précédente, appliquée à tous les canaux de celle-ci
-            // (un échantillon de décalage, inaudible).
-            let mono = self.frame_sum / self.channels as f32;
-            self.frame_wet = if self.wet > 0.0 { self.reverb.run(mono) * self.wet } else { 0.0 };
-            self.frame_sum = 0.0;
+        let speed = self.fx.speed.get();
+        if self.stretch.is_none() && (speed - 1.0).abs() >= 0.005 {
+            use std::num::{NonZeroU16, NonZeroU32};
+            let rate = NonZeroU32::new(self.rate)?;
+            let channels = NonZeroU16::new(self.channels.try_into().ok()?)?;
+            self.stretch = wsola::TimeStretch::new(rate, channels).ok();
         }
-        let x = self.inner.next()?;
-        if self.ch == 0 {
-            self.frames += 1;
-            self.clock.set(self.base + self.frames as f64 / f64::from(self.rate));
-        }
-        let ch = self.ch;
-        self.ch = (self.ch + 1) % self.channels;
-        if ch == 0 {
-            self.meter.feed(x, &self.fx);
-        }
-        self.frame_sum += x;
 
-        let mut y = x;
-        if self.eq_on {
-            let state = &mut self.eq_state[ch];
-            for (f, z) in self.eq.iter().zip(state.iter_mut()) {
-                y = f.run(y, z);
+        if self.stretch.is_some() {
+            if let Some(stretch) = &mut self.stretch { stretch.set_tempo(speed); }
+            if self.stretch_pos < self.stretch_written {
+                let sample = self.stretch_out[self.stretch_pos];
+                self.stretch_pos += 1;
+                return Some(sample);
+            }
+
+            let minimum = self.stretch.as_ref()?.min_output_buff_size();
+            self.stretch_out.resize(minimum * 4, 0.0);
+            loop {
+                let pulled = self.stretch.as_mut()?.pull(&mut self.stretch_out);
+                match pulled {
+                    Ok(n) if n > 0 => {
+                        self.stretch_written = n;
+                        self.stretch_pos = 1;
+                        return Some(self.stretch_out[0]);
+                    }
+                    Err(wsola::Error::NotEnoughInput) | Ok(0) if !self.stretch_eof => {
+                        if self.prepare_frame() {
+                            self.stretch.as_mut()?.push(&self.frame);
+                        } else {
+                            self.stretch.as_mut()?.set_draining();
+                            self.stretch_eof = true;
+                        }
+                    }
+                    _ => return None,
+                }
             }
         }
-        if self.wet > 0.0 {
-            y = y * (1.0 - 0.35 * self.wet) + self.frame_wet;
+
+        if self.frame_pos >= self.channels {
+            if !self.prepare_frame() { return None; }
+            self.frame_pos = 0;
         }
-        if self.radio > 0.0 {
-            // Filtre passe-haut/passe-bas + légère réduction de résolution et saturation.
-            // Les fréquences de coupure gardent une voix lisible, comme une radio ancienne.
-            let state = &mut self.radio_state[ch];
-            let hp_alpha = 1.0 - (-std::f32::consts::TAU * 280.0 / self.rate as f32).exp();
-            let lp_alpha = 1.0 - (-std::f32::consts::TAU * 3600.0 / self.rate as f32).exp();
-            let hp = (1.0 - hp_alpha) * (state[1] + y - state[0]);
-            state[0] = y;
-            state[1] = hp;
-            state[2] += lp_alpha * (hp - state[2]);
-            let steps = 36.0;
-            let lo_fi = (state[2] * steps).round() / steps;
-            let driven = (lo_fi * 1.35).tanh() / 1.35f32.tanh();
-            y += (driven - y) * self.radio;
-        }
-        // Soft limiter: EQ extrême et réverbération ne génèrent pas de coupure numérique dure.
-        if self.eq_on || self.wet > 0.0 || self.radio > 0.0 {
-            let magnitude = y.abs();
-            if magnitude > 0.92 {
-                y = y.signum() * (0.92 + 0.08 * (1.0 - (-((magnitude - 0.92) / 0.08)).exp()));
-            }
-        }
-        Some(y)
+        let sample = self.frame[self.frame_pos];
+        self.frame_pos += 1;
+        Some(sample)
     }
 }
 
@@ -450,7 +647,12 @@ impl<S: Source> Source for FxSource<S> {
     }
     fn try_seek(&mut self, pos: Duration) -> Result<(), SeekError> {
         self.inner.try_seek(pos)?;
-        self.ch = 0;
+        self.frame_pos = self.channels;
+        if let Some(stretch) = &mut self.stretch { stretch.reset(); }
+        self.stretch_out.clear();
+        self.stretch_pos = 0;
+        self.stretch_written = 0;
+        self.stretch_eof = false;
         self.base = pos.as_secs_f64();
         self.frames = 0;
         self.clock.set(self.base);
@@ -535,7 +737,7 @@ mod bench {
         let data: Vec<f32> = (0..n).map(|i| ((i as f32) * 0.01).sin() * 0.4).collect();
         let src = rodio::buffer::SamplesBuffer::new(ChannelCount::new(2).unwrap(), SampleRate::new(48_000).unwrap(), data);
         let fx = Arc::new(Fx::default());
-        fx.set(FxSettings { bass: 6.0, mid: -3.0, treble: 4.0, reverb: 0.5, speed: 1.0, radio: 0.0 });
+        fx.set(FxSettings { preamp: 0.0, bass: 6.0, mid: -3.0, treble: 4.0, reverb: 0.5, speed: 1.0, radio: 0.0, ..Default::default() });
         let t = std::time::Instant::now();
         let sum: f32 = FxSource::new(src, fx, Default::default()).sum();
         eprintln!("60 s de son traités en {:?} (somme {sum})", t.elapsed());

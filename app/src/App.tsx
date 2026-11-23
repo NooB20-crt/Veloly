@@ -1,6 +1,6 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { createEffect, createMemo, createSignal, For, Match, on, onCleanup, onMount, Show, Switch, type JSX } from "solid-js";
-import { api, bigCoverUrl, formatTime, type AlbumPage, type ArtistPage, type Snapshot, type SourceInfo, type Track, type YtDlpStatus } from "./api";
+import { api, bigCoverUrl, formatBytes, formatTime, type AlbumPage, type ArtistPage, type Snapshot, type SourceInfo, type Track, type YtDlpStatus } from "./api";
 import { AlbumView } from "./album";
 import { ArtistView } from "./artist";
 import { nameForTransition, transition } from "./motion";
@@ -16,6 +16,11 @@ import { handleBackButton, isMobile } from "./mobile";
 import { dismissSplash } from "./splash";
 import { matchesShortcut } from "./shortcuts";
 import { ImportDialog, SettingsView } from "./settings";
+import { OfflineHelpDialog } from "./offline-help";
+import { WelcomeDialog } from "./welcome";
+import { applyCustomization } from "./customization";
+import { userError } from "./error-message";
+import { offlineMode, setOfflineMode } from "./offline-mode";
 import { LikedView, PlaylistView } from "./playlist";
 import { Backdrop, NowPlaying, PlayerBar } from "./player";
 import { DiscoverView, discoverSections, listenDiscover, loadDiscover, refreshDiscover } from "./discover";
@@ -35,6 +40,11 @@ export default function App() {
   const [sources, setSources] = createSignal<SourceInfo[]>([]);
   const [library, setLibrary] = createSignal<Track[]>([]);
   const [folders, setFolders] = createSignal<string[]>([]);
+  const [libraryBytes, setLibraryBytes] = createSignal(0);
+  const [missingFiles, setMissingFiles] = createSignal(0);
+  const [missingFolders, setMissingFolders] = createSignal<string[]>([]);
+  const [welcomeOpen, setWelcomeOpen] = createSignal(false);
+  const [offlineHelpOpen, setOfflineHelpOpen] = createSignal(false);
   const [scanning, setScanning] = createSignal(false);
   const [query, setQuery] = createSignal("");
   const [results, setResults] = createSignal<Track[] | null>(null);
@@ -235,7 +245,7 @@ export default function App() {
   };
 
   // ---------- Erreurs ----------
-  const fail = (e: unknown) => notify(String(e), "error");
+  const fail = (e: unknown) => notify(userError(e), "error");
 
   // ---------- Position fluide ----------
   // Le cœur envoie l'état 4 fois par seconde ; entre deux, on extrapole à chaque image.
@@ -277,9 +287,24 @@ export default function App() {
 
   // ---------- Chargement ----------
   const reloadLibrary = async () => {
-    const [tracks, dirs] = await Promise.all([api.libraryTracks(), api.libraryFolders()]);
+    const [tracks, dirs, bytes, health] = await Promise.all([api.libraryTracks(), api.libraryFolders(), api.librarySize(), api.libraryHealth()]);
     setLibrary(tracks);
     setFolders(dirs);
+    setLibraryBytes(bytes);
+    setMissingFiles(health.missingFiles);
+    setMissingFolders(health.missingFolders);
+  };
+
+  const toggleOfflineMode = async () => {
+    const next = !offlineMode();
+    setOfflineMode(next);
+    try {
+      await api.setOfflineMode(next);
+      applySnap(await api.state());
+    } catch (e) {
+      setOfflineMode(!next);
+      fail(e);
+    }
   };
 
   onMount(async () => {
@@ -288,6 +313,10 @@ export default function App() {
     const unlisten = api.onPlayer(applySnap);
     const unlistenDiscover = listenDiscover();
     api.ytdlpStatus().then(setYtdlp).catch(() => {});
+    api.getSettings().then((s) => {
+      setOfflineMode(s.offlineOnly);
+      applyCustomization(s.customization);
+    }).catch(() => {});
     window.addEventListener("keydown", onKey);
     const stopBack = handleBackButton(onBack);
     onCleanup(() => {
@@ -301,6 +330,11 @@ export default function App() {
       setSources(await api.sources());
       applySnap(await api.state());
       await Promise.all([reloadLibrary(), loadCollection(), loadRecentSearches()]);
+      try {
+        if (!localStorage.getItem("veloly.welcome.v1") && isFirstUse()) setWelcomeOpen(true);
+      } catch {
+        if (isFirstUse()) setWelcomeOpen(true);
+      }
     } catch (e) {
       fail(e);
     }
@@ -397,8 +431,15 @@ export default function App() {
 
   // ---------- Lecture ----------
   const play = async (tracks: Track[], index: number) => {
+    const playable = offlineMode() ? tracks.filter((track) => track.location.kind === "file") : tracks;
+    if (!playable.length) {
+      notify(t.offlineModeUnavailable, "error");
+      return;
+    }
+    const before = offlineMode() ? tracks.slice(0, index).filter((track) => track.location.kind === "file").length : index;
+    const selected = offlineMode() && tracks[index]?.location.kind !== "file" ? Math.min(before, playable.length - 1) : before;
     try {
-      applySnap(await api.playQueue(tracks, index));
+      applySnap(await api.playQueue(playable, selected));
     } catch (e) {
       fail(e);
       applySnap(await api.state());
@@ -468,14 +509,37 @@ export default function App() {
     }
   };
   const addFolder = async () => {
-    const dir = await open({ directory: true, multiple: false, title: t.chooseFolder });
-    if (typeof dir !== "string") return;
-    await withScan(() => api.addFolder(dir));
-    goTo("library");
+    try {
+      const dir = await open({ directory: true, multiple: false, title: t.chooseFolder });
+      if (typeof dir !== "string") return;
+      await withScan(() => api.addFolder(dir));
+      goTo("library");
+    } catch (e) {
+      fail(e);
+    }
+  };
+  const closeWelcome = () => {
+    setWelcomeOpen(false);
+    try { localStorage.setItem("veloly.welcome.v1", "1"); } catch { /* Le guide peut réapparaître si le stockage local est désactivé. */ }
+  };
+  const repairFolder = async (oldPath: string) => {
+    try {
+      const dir = await open({ directory: true, multiple: false, title: t.chooseFolder });
+      if (typeof dir !== "string") return;
+      await withScan(async () => {
+        await api.addFolder(dir);
+        await api.removeFolder(oldPath);
+      });
+    } catch (e) {
+      fail(e);
+    }
   };
 
   const libraryDuration = createMemo(() => library().reduce((acc, t) => acc + (t.duration ?? 0), 0));
   const isCurrent = (t: Track) => snap().track?.id === t.id;
+  const isFirstUse = () =>
+    folders().length === 0 && library().length === 0 && collection().playlists.length === 0 &&
+    collection().liked.length === 0 && collection().history.length === 0;
 
   return (
     <div classList={{ app: true, [`view-${view()}`]: true, "has-track": !!snap().track, "playing-on": snap().status === "playing", expanded: np() === "open", "np-moving": np() === "opening" || np() === "closing" }}>
@@ -629,11 +693,13 @@ export default function App() {
               <div class="page-head">
                 <div>
                   <h1>{t.yourMusic}</h1>
-                  <p class="muted">
-                    {t.tracksCount(library().length)} · {formatTime(libraryDuration())}
-                  </p>
+                  <p class="muted">{t.offlineStorage(library().length, formatBytes(libraryBytes()))} · {formatTime(libraryDuration())}</p>
                 </div>
                 <div class="actions">
+                  <button classList={{ ghost: true, "offline-on": offlineMode() }} aria-pressed={offlineMode()} onClick={toggleOfflineMode}>
+                    {t.offlineMode}
+                  </button>
+                  <button class="ghost" onClick={() => setOfflineHelpOpen(true)}>{t.offlineHelp}</button>
                   <Show when={library().length > 0}>
                     <button class="primary" onClick={() => play(library(), 0)}>
                       <IconPlay size={16} /> {t.playAll}
@@ -659,6 +725,29 @@ export default function App() {
                   <IconFolderPlus /> {scanning() ? t.scanning : t.addFolder}
                 </button>
               </div>
+              <Show when={missingFiles() > 0 || missingFolders().length > 0}>
+                <div class="library-warning" role="status">
+                  <strong>{t.libraryNeedsAttention}</strong>
+                  <Show when={missingFiles() > 0}>
+                    <div class="library-warning-row">
+                      <span>{t.missingTracks(missingFiles())}</span>
+                      <button class="ghost" disabled={scanning()} onClick={() => withScan(api.rescan)}>{t.rescan}</button>
+                    </div>
+                  </Show>
+                  <For each={missingFolders()}>
+                    {(path) => (
+                      <div class="library-warning-row">
+                        <span class="missing-path" title={path}>{t.folderNotFound(path)}</span>
+                        <button class="ghost" disabled={scanning()} onClick={() => void repairFolder(path)}>{t.chooseReplacementFolder}</button>
+                        <button class="ghost" disabled={scanning()} onClick={() => withScan(() => api.removeFolder(path))}>{t.removeFolderShort}</button>
+                      </div>
+                    )}
+                  </For>
+                </div>
+              </Show>
+              <Show when={offlineMode()}>
+                <p class="muted offline-hint">{t.offlineModeHint}</p>
+              </Show>
               <Show
                 when={library().length > 0}
                 fallback={
@@ -779,6 +868,18 @@ export default function App() {
             if (id === "liked") goTo("liked");
             else openPlaylist(id);
           }}
+        />
+      </Show>
+
+      <Show when={offlineHelpOpen()}>
+        <OfflineHelpDialog onClose={() => setOfflineHelpOpen(false)} />
+      </Show>
+
+      <Show when={welcomeOpen()}>
+        <WelcomeDialog
+          onClose={closeWelcome}
+          onAddMusic={() => { closeWelcome(); void addFolder(); }}
+          onImport={() => { closeWelcome(); setImporting(true); }}
         />
       </Show>
 

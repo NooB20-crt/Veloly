@@ -4,9 +4,10 @@
 import { createMemo, createSignal, For, onCleanup, onMount, Show, type JSX } from "solid-js";
 import { api, type QueueItem, type Snapshot, type Track } from "./api";
 import { collection, createPlaylist, openTrackMenu } from "./collection";
-import { IconClose, IconQueueList } from "./icons";
+import { IconClose, IconGrip, IconQueueList } from "./icons";
 import { t as tr } from "./i18n";
 import { ArtistLinks, Cover, ExplicitBadge } from "./ui";
+import { isMobile } from "./mobile";
 
 type Run = (a: () => Promise<Snapshot>) => void;
 
@@ -40,7 +41,7 @@ export function Popover(props: { icon: JSX.Element; title: string; active?: bool
 
 export function QueueButton(props: { snap: Snapshot; run: Run }) {
   return (
-    <Popover icon={<IconQueueList />} title={tr.queue} active={props.snap.upNext.length > 0} class="queue-popover">
+    <Popover icon={<IconQueueList />} title={tr.queue} active={props.snap.upNext.length > 0} class="queue-popover control-queue">
       {() => <QueuePanel snap={props.snap} run={props.run} />}
     </Popover>
   );
@@ -56,8 +57,47 @@ function QueuePanel(props: { snap: Snapshot; run: Run }) {
   const upcoming = createMemo(() => props.snap.upcoming, [], { equals: sameList((t: Track) => t.id) });
   const current = createMemo(() => props.snap.track, null, { equals: (a, b) => a?.id === b?.id });
   const [dragFrom, setDragFrom] = createSignal<number | null>(null);
+  const [dragSection, setDragSection] = createSignal<"queue" | "upcoming" | null>(null);
   const [dragOver, setDragOver] = createSignal<number | null>(null);
-  const endDrag = () => (setDragFrom(null), setDragOver(null));
+  const endDrag = () => (setDragFrom(null), setDragSection(null), setDragOver(null));
+  const move = (section: "queue" | "upcoming", from: number, to: number, key?: number) =>
+    props.run(() => section === "queue" ? api.moveQueued(key!, to) : api.moveUpcoming(from, to));
+  const touchReorder = (e: PointerEvent, section: "queue" | "upcoming", from: number, key?: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragFrom(from);
+    setDragSection(section);
+    setDragOver(from);
+    const scroller = (e.currentTarget as HTMLElement).closest(".queue-scroll");
+    let y = e.clientY;
+    let raf = 0;
+    const edgeScroll = () => {
+      if (scroller) {
+        const r = scroller.getBoundingClientRect();
+        const step = y < r.top + 60 ? -7 : y > r.bottom - 60 ? 7 : 0;
+        if (step) scroller.scrollTop += step;
+      }
+      raf = requestAnimationFrame(edgeScroll);
+    };
+    raf = requestAnimationFrame(edgeScroll);
+    const onMove = (ev: PointerEvent) => {
+      y = ev.clientY;
+      const row = document.elementFromPoint(ev.clientX, ev.clientY)?.closest<HTMLElement>(".queue-row");
+      if (row?.dataset.section === section && row.dataset.index) setDragOver(Number(row.dataset.index));
+    };
+    const onStop = (ev: PointerEvent) => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onStop);
+      window.removeEventListener("pointercancel", onStop);
+      const to = dragOver();
+      if (ev.type === "pointerup" && to !== null && to !== from) move(section, from, to, key);
+      endDrag();
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onStop);
+    window.addEventListener("pointercancel", onStop);
+  };
   return (
     <>
       <div class="eq-head">
@@ -89,25 +129,29 @@ function QueuePanel(props: { snap: Snapshot; run: Run }) {
             {(q, i) => (
               <QueueRow
                 track={q.track}
-                draggable
+                draggable={!isMobile()}
+                section="queue"
+                index={i()}
+                onHandlePointerDown={(e) => touchReorder(e, "queue", i(), q.key)}
                 classList={{
-                  dragging: dragFrom() === i(),
-                  "drop-before": dragOver() === i() && dragFrom() !== null && dragFrom()! > i(),
-                  "drop-after": dragOver() === i() && dragFrom() !== null && dragFrom()! < i(),
+                  dragging: dragSection() === "queue" && dragFrom() === i(),
+                  "drop-before": dragSection() === "queue" && dragOver() === i() && dragFrom() !== null && dragFrom()! > i(),
+                  "drop-after": dragSection() === "queue" && dragOver() === i() && dragFrom() !== null && dragFrom()! < i(),
                 }}
                 onDragStart={(e) => {
                   setDragFrom(i());
+                  setDragSection("queue");
                   e.dataTransfer!.effectAllowed = "move";
                 }}
                 onDragOver={(e) => {
-                  if (dragFrom() === null) return;
+                  if (dragSection() !== "queue" || dragFrom() === null) return;
                   e.preventDefault();
                   setDragOver(i());
                 }}
                 onDrop={(e) => {
                   e.preventDefault();
                   const from = dragFrom();
-                  if (from !== null && from !== i()) props.run(() => api.moveQueued(q.key, i()));
+                  if (dragSection() === "queue" && from !== null && from !== i()) move("queue", from, i(), upNext()[from]?.key);
                   endDrag();
                 }}
                 onDragEnd={endDrag}
@@ -120,7 +164,24 @@ function QueuePanel(props: { snap: Snapshot; run: Run }) {
         </Show>
         <Show when={upcoming().length > 0}>
           <div class="menu-label">{tr.nextFromList}</div>
-          <For each={upcoming()}>{(t) => <QueueRow track={t} />}</For>
+          <For each={upcoming()}>{(t, i) => (
+            <QueueRow
+              track={t}
+              draggable={!isMobile()}
+              section="upcoming"
+              index={i()}
+              onHandlePointerDown={(e) => touchReorder(e, "upcoming", i())}
+              classList={{
+                dragging: dragSection() === "upcoming" && dragFrom() === i(),
+                "drop-before": dragSection() === "upcoming" && dragOver() === i() && dragFrom() !== null && dragFrom()! > i(),
+                "drop-after": dragSection() === "upcoming" && dragOver() === i() && dragFrom() !== null && dragFrom()! < i(),
+              }}
+              onDragStart={(e) => { setDragFrom(i()); setDragSection("upcoming"); e.dataTransfer!.effectAllowed = "move"; }}
+              onDragOver={(e) => { if (dragSection() !== "upcoming" || dragFrom() === null) return; e.preventDefault(); setDragOver(i()); }}
+              onDrop={(e) => { e.preventDefault(); const from = dragFrom(); if (dragSection() === "upcoming" && from !== null && from !== i()) move("upcoming", from, i()); endDrag(); }}
+              onDragEnd={endDrag}
+            />
+          )}</For>
         </Show>
       </div>
     </>
@@ -139,11 +200,16 @@ function QueueRow(props: {
   onPlay?: () => void;
   onRemove?: () => void;
   onMoveUp?: () => void;
+  section?: "queue" | "upcoming";
+  index?: number;
+  onHandlePointerDown?: (e: PointerEvent) => void;
 }) {
   return (
     <div
       classList={{ "queue-row": true, current: !!props.current, ...props.classList }}
       draggable={props.draggable}
+      data-section={props.section}
+      data-index={props.index}
       onDragStart={props.onDragStart}
       onDragOver={props.onDragOver}
       onDrop={props.onDrop}
@@ -170,6 +236,11 @@ function QueueRow(props: {
         <button class="icon-btn" title={tr.removeFromQueue} onClick={props.onRemove}>
           <IconClose />
         </button>
+      </Show>
+      <Show when={props.onHandlePointerDown}>
+        <span class="queue-handle" title={tr.dragToReorder} onPointerDown={props.onHandlePointerDown} onClick={(e) => e.stopPropagation()}>
+          <IconGrip />
+        </span>
       </Show>
     </div>
   );

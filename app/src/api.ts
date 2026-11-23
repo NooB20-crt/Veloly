@@ -215,12 +215,31 @@ export interface Settings {
   crossfade: number;
   /** Reprendre l'écoute au lancement. */
   resume: boolean;
+  /** Ne lire que les fichiers audio disponibles sur cet appareil. */
+  offlineOnly: boolean;
   /** Égaliseur, réverbération et vitesse. */
   fx: FxSettings;
   /** Sortie audio choisie ; `null` : celle du système. Se règle avec `setOutputDevice`. */
   outputDevice?: string | null;
   /** Identifiant d'application public du portail développeur Jamendo. */
   jamendoClientId?: string | null;
+  customization: Customization;
+  outputProfiles: Record<string, FxSettings>;
+}
+
+export interface Customization {
+  primaryColor: string;
+  secondaryColor: string;
+}
+
+export const DEFAULT_CUSTOMIZATION: Customization = {
+  primaryColor: "#9718ed",
+  secondaryColor: "#d17aff",
+};
+
+export interface LibraryHealth {
+  missingFiles: number;
+  missingFolders: string[];
 }
 
 /** Une sortie audio du système. `kind` : builtIn, bluetooth, usb, hdmi, network ou other. */
@@ -240,19 +259,25 @@ export interface OutputDevices {
 
 /** Effets appliqués au son. */
 export interface FxSettings {
+  preamp: number;
+  balance: number;
+  stereoWidth: number;
+  normalize: boolean;
+  limiter: boolean;
+  channelMode: "stereo" | "mono" | "left" | "right";
   /** Gains en dB, de -50 à +50. */
   bass: number;
   mid: number;
   treble: number;
   /** Réverbération, de 0 à 1. */
   reverb: number;
-  /** Vitesse, de 0,5 à 1,5 (le son monte ou descend avec). */
+  /** Vitesse, de 0,5 à 1,5, en préservant la hauteur. */
   speed: number;
   /** Intensité du filtre radio lo-fi, de 0 à 1. */
   radio: number;
 }
 
-export const FLAT_FX: FxSettings = { bass: 0, mid: 0, treble: 0, reverb: 0, speed: 1, radio: 0 };
+export const FLAT_FX: FxSettings = { preamp: 0, balance: 0, stereoWidth: 1, normalize: false, limiter: true, channelMode: "stereo", bass: 0, mid: 0, treble: 0, reverb: 0, speed: 1, radio: 0 };
 
 /** Période résumée par les statistiques. */
 export type Period = { kind: "year"; year: number } | { kind: "month"; year: number; month: number } | { kind: "all" };
@@ -319,7 +344,9 @@ const utcOffset = () => -new Date().getTimezoneOffset();
 export const api = {
   sources: () => invoke<SourceInfo[]>("list_sources"),
   libraryTracks: () => invoke<Track[]>("library_tracks"),
+  librarySize: () => invoke<number>("library_size"),
   libraryFolders: () => invoke<string[]>("library_folders"),
+  libraryHealth: () => invoke<LibraryHealth>("library_health"),
   addFolder: (path: string) => invoke<number>("add_folder", { path }),
   removeFolder: (path: string) => invoke<number>("remove_folder", { path }),
   rescan: () => invoke<number>("rescan"),
@@ -335,6 +362,7 @@ export const api = {
   enqueue: (tracks: Track[], first: boolean) => invoke<Snapshot>("enqueue", { tracks, first }),
   removeQueued: (key: number) => invoke<Snapshot>("remove_queued", { key }),
   moveQueued: (key: number, to: number) => invoke<Snapshot>("move_queued", { key, to }),
+  moveUpcoming: (from: number, to: number) => invoke<Snapshot>("move_upcoming", { from, to }),
   clearQueued: () => invoke<Snapshot>("clear_queued"),
   playQueued: (key: number) => invoke<Snapshot>("play_queued", { key }),
   toggle: () => invoke<Snapshot>("toggle"),
@@ -356,7 +384,6 @@ export const api = {
   collection: () => invoke<Collection>("collection"),
   exportCollection: (path: string) => invoke<void>("export_collection", { path }),
   importCollection: (path: string) => invoke<Collection>("import_collection", { path }),
-  downloadOffline: (track: Track) => invoke<void>("download_offline", { track }),
   toggleLike: (track: Track) => invoke<Collection>("toggle_like", { track }),
   createPlaylist: (name: string, tracks?: Track[]) => invoke<Collection>("create_playlist", { name, tracks: tracks ?? null }),
   renamePlaylist: (id: string, name: string) => invoke<Collection>("rename_playlist", { id, name }),
@@ -378,6 +405,7 @@ export const api = {
   onCollection: (cb: (c: Collection) => void): Promise<UnlistenFn> => listen<Collection>("collection", (e) => cb(e.payload)),
   getSettings: () => invoke<Settings>("get_settings"),
   setSettings: (value: Settings) => invoke<Settings>("set_settings", { value }),
+  setOfflineMode: (enabled: boolean) => invoke<Settings>("set_offline_mode", { enabled }),
   outputDevices: () => invoke<OutputDevices>("output_devices"),
   setOutputDevice: (id: string | null) => invoke<OutputDevices>("set_output_device", { id }),
   /** Basses, médiums, aigus, ensemble (0 à 1 environ), pour le visualiseur. */
@@ -428,4 +456,12 @@ export function formatTime(seconds: number | null | undefined): string {
   const m = Math.floor((s % 3600) / 60);
   const sec = String(s % 60).padStart(2, "0");
   return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${sec}` : `${String(m).padStart(2, "0")}:${sec}`;
+}
+
+export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 MB";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / 1024 ** index;
+  return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: index < 2 ? 0 : 1 }).format(value)} ${units[index]}`;
 }

@@ -8,6 +8,7 @@ mod media;
 mod settings;
 
 use std::{
+    collections::HashSet,
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
@@ -15,7 +16,7 @@ use std::{
 
 use yato_core::{
     ArtistRef, Collection, CollectionData, Controller, Error, ListenLog, ListenTracker, Period, RecentSearches, Repeat, Session,
-    Snapshot, SourceInfo, SourceRegistry, Stats, Track,
+    Location, Snapshot, SourceInfo, SourceRegistry, Stats, Track,
     discover::{self, Discover, Section},
     lyrics::{Lyrics, LyricsClient},
     sources::{
@@ -39,7 +40,7 @@ struct AppState {
     library: Arc<LocalLibrary>,
     /// Source d'infos : fiches d'artistes et albums.
     deezer: Arc<DeezerSource>,
-    /// Catalogue Jamendo et fichiers téléchargés avec autorisation explicite.
+    /// Catalogue Jamendo.
     jamendo: Arc<yato_core::sources::JamendoSource>,
     collection: Collection,
     /// Journal des écoutes (page Stats, récap de l'année).
@@ -81,8 +82,36 @@ fn library_tracks(state: State<'_, AppState>) -> Vec<Track> {
 }
 
 #[tauri::command]
+fn library_size(state: State<'_, AppState>) -> u64 {
+    state.library.size_bytes()
+}
+
+#[tauri::command]
 fn library_folders(state: State<'_, AppState>) -> Vec<PathBuf> {
     state.library.folders()
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LibraryHealth {
+    missing_files: usize,
+    missing_folders: Vec<PathBuf>,
+}
+
+#[tauri::command]
+async fn library_health(state: State<'_, AppState>) -> Res<LibraryHealth> {
+    let library = state.library.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let missing_folders = library.folders().into_iter().filter(|path| !path.is_dir()).collect();
+        let mut seen = HashSet::new();
+        let missing_files = library.tracks().into_iter().filter_map(|track| match track.location {
+            Location::File { path } if seen.insert(path.clone()) && !path.is_file() => Some(path),
+            _ => None,
+        }).count();
+        Ok::<LibraryHealth, Error>(LibraryHealth { missing_files, missing_folders })
+    })
+    .await
+    .map_err(|e| Error::Other(e.to_string()))?
 }
 
 /// Lance une opération de scan hors du thread de l'interface, puis sauvegarde le cache.
@@ -122,12 +151,6 @@ async fn rescan(state: State<'_, AppState>) -> Res<usize> {
 #[tauri::command]
 fn collection(state: State<'_, AppState>) -> CollectionData {
     state.collection.get()
-}
-
-#[tauri::command]
-async fn download_offline(state: State<'_, AppState>, track: Track) -> Res<()> {
-    state.jamendo.download_offline(&track).await?;
-    Ok(())
 }
 
 #[tauri::command]
@@ -306,9 +329,14 @@ fn audio_levels(state: State<'_, AppState>) -> [f32; 4] {
 #[tauri::command]
 fn set_settings(state: State<'_, AppState>, mut value: Settings) -> Res<Settings> {
     value.fx = value.fx.clamped();
+    value.retire_removed_sound_options();
+    value.customization.sanitize();
     // La sortie audio se règle à part (`set_output_device`) : une page Réglages ouverte avant
     // ne doit pas remettre l'ancien choix.
-    value.output_device = state.settings.lock().output_device.clone();
+    let current = state.settings.lock().clone();
+    value.output_device = current.output_device.clone();
+    let profile_key = current.output_device.as_deref().unwrap_or("system").to_owned();
+    value.output_profiles.insert(profile_key, value.fx);
     state.jamendo.set_client_id(value.jamendo_client_id.clone());
     state.controller.set_crossfade(value.crossfade);
     state.controller.set_fx(value.fx);
@@ -318,6 +346,51 @@ fn set_settings(state: State<'_, AppState>, mut value: Settings) -> Res<Settings
         let _ = std::fs::remove_file(&state.session_path);
     }
     Ok(value)
+}
+
+fn is_offline_track(track: &Track) -> bool {
+    matches!(&track.location, Location::File { .. })
+}
+
+fn offline_session(mut session: Session, local_tracks: Vec<Track>) -> Session {
+    let old_index = session.index;
+    let old_current = session.queued.take().or_else(|| old_index.and_then(|i| session.queue.get(i).cloned()));
+    session.queue.retain(is_offline_track);
+    session.up_next.retain(is_offline_track);
+    let current = old_current.filter(is_offline_track);
+    let current_index = current.as_ref().and_then(|t| session.queue.iter().position(|q| q.id == t.id));
+    if let Some(current) = current {
+        if let Some(index) = current_index {
+            session.index = Some(index);
+        } else {
+            session.queue.insert(0, current);
+            session.index = Some(0);
+        }
+    } else if session.queue.is_empty() {
+        session.queue = local_tracks;
+        session.index = (!session.queue.is_empty()).then_some(0);
+        session.position = 0.0;
+    } else {
+        session.index = Some(0);
+        session.position = 0.0;
+    }
+    session
+}
+
+#[tauri::command]
+fn set_offline_mode(state: State<'_, AppState>, enabled: bool) -> Res<Settings> {
+    let mut settings = state.settings.lock().clone();
+    if settings.offline_only != enabled {
+        if enabled {
+            let session = offline_session(state.controller.session(), state.library.tracks());
+            state.controller.stop();
+            state.controller.restore(session);
+        }
+        settings.offline_only = enabled;
+        *state.settings.lock() = settings.clone();
+        settings::save(&state.settings_path, &settings)?;
+    }
+    Ok(settings)
 }
 
 /// Sorties audio du système, celle choisie et celle qui joue.
@@ -351,9 +424,15 @@ async fn set_output_device(state: State<'_, AppState>, id: Option<String>) -> Re
         .map_err(|e| Error::Other(e.to_string()))??;
     let value = {
         let mut s = state.settings.lock();
+        let current_key = s.output_device.as_deref().unwrap_or("system").to_owned();
+        let current_fx = s.fx;
+        s.output_profiles.insert(current_key, current_fx);
         s.output_device = id;
+        let next_key = s.output_device.as_deref().unwrap_or("system");
+        s.fx = s.output_profiles.get(next_key).copied().unwrap_or_default().clamped();
         s.clone()
     };
+    state.controller.set_fx(value.fx);
     settings::save(&state.settings_path, &value)?;
     output_devices(state).await
 }
@@ -384,6 +463,17 @@ async fn featured(state: State<'_, AppState>, source: String) -> Res<Vec<Track>>
 
 #[tauri::command]
 async fn play_queue(state: State<'_, AppState>, tracks: Vec<Track>, index: usize) -> Res<Snapshot> {
+    let (tracks, index) = if state.settings.lock().offline_only {
+        let wanted = tracks.get(index).map(|t| t.id.clone());
+        let tracks: Vec<_> = tracks.into_iter().filter(is_offline_track).collect();
+        if tracks.is_empty() {
+            return Err(Error::Other("Ajoute d'abord des fichiers musicaux à ta bibliothèque hors ligne".into()));
+        }
+        let index = wanted.and_then(|id| tracks.iter().position(|t| t.id == id)).unwrap_or(index.min(tracks.len() - 1));
+        (tracks, index)
+    } else {
+        (tracks, index)
+    };
     state.controller.play_queue(tracks, index).await?;
     Ok(state.controller.snapshot())
 }
@@ -446,6 +536,7 @@ async fn warm(state: State<'_, AppState>, tracks: Vec<Track>) -> Res<()> {
 /// File d'attente : `first`, les morceaux passent avant ceux déjà prévus (« Lire ensuite »).
 #[tauri::command]
 fn enqueue(state: State<'_, AppState>, tracks: Vec<Track>, first: bool) -> Snapshot {
+    let tracks = if state.settings.lock().offline_only { tracks.into_iter().filter(is_offline_track).collect() } else { tracks };
     state.controller.enqueue(tracks, first);
     state.controller.snapshot()
 }
@@ -459,6 +550,12 @@ fn remove_queued(state: State<'_, AppState>, key: u64) -> Snapshot {
 #[tauri::command]
 fn move_queued(state: State<'_, AppState>, key: u64, to: usize) -> Snapshot {
     state.controller.move_queued(key, to);
+    state.controller.snapshot()
+}
+
+#[tauri::command]
+fn move_upcoming(state: State<'_, AppState>, from: usize, to: usize) -> Snapshot {
+    state.controller.move_upcoming(from, to);
     state.controller.snapshot()
 }
 
@@ -676,11 +773,7 @@ pub fn run() {
             // yt-dlp local : Veloly ne le télécharge ni ne le met à jour.
             let ytdlp = YtDlp::new(data_dir.join("bin").join("yt-dlp"), client.clone());
             let youtube = Arc::new(YouTubeMusicSource::new(cache_dir.join("youtube"), ytdlp.clone())?);
-            let jamendo = yato_core::sources::JamendoSource::new(
-                client.clone(),
-                data_dir.join("offline").join("jamendo"),
-                prefs.jamendo_client_id.clone(),
-            );
+            let jamendo = yato_core::sources::JamendoSource::new(client.clone(), prefs.jamendo_client_id.clone());
             // Deezer donne les infos (titres, albums, pochettes, top), YouTube Music le son.
             let deezer = Arc::new(DeezerSource::new(client.clone(), youtube.clone()));
 
@@ -705,7 +798,8 @@ pub fn run() {
                 });
             }
             if prefs.resume {
-                controller.restore(settings::load::<Session>(&session_path));
+                let session = settings::load::<Session>(&session_path);
+                controller.restore(if prefs.offline_only { offline_session(session, library.tracks()) } else { session });
             }
             app.manage(AppState {
                 controller: controller.clone(),
@@ -824,7 +918,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             list_sources,
             library_tracks,
+            library_size,
             library_folders,
+            library_health,
             add_folder,
             remove_folder,
             rescan,
@@ -850,7 +946,6 @@ pub fn run() {
             player_state,
             queue,
             collection,
-            download_offline,
             export_collection,
             import_collection,
             toggle_like,
@@ -871,12 +966,14 @@ pub fn run() {
             import_playlist,
             get_settings,
             set_settings,
+            set_offline_mode,
             audio_levels,
             set_shuffle,
             set_repeat,
             enqueue,
             remove_queued,
             move_queued,
+            move_upcoming,
             clear_queued,
             play_queued,
             output_devices,

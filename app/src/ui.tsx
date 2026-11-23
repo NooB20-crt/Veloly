@@ -2,7 +2,7 @@
 import { createEffect, createSignal, For, Match, onCleanup, onMount, Show, Switch, type JSX } from "solid-js";
 import { albumRefOf, api, artistsOf, coverUrl, formatTime, type ArtistRef, type Snapshot, type Track, type YtDlpStatus } from "./api";
 import { openAlbum, openArtist } from "./nav";
-import { IconBack, IconDownload, IconForward, IconGrip, IconHeart, IconMore, IconNote, IconPlay, IconPlayNext, IconPlaylist, IconPlus, IconQueue } from "./icons";
+import { IconBack, IconForward, IconGrip, IconHeart, IconMore, IconNote, IconPlay, IconPlayNext, IconPlaylist, IconPlus, IconQueue } from "./icons";
 import { t as tr } from "./i18n";
 import { isMobile } from "./mobile";
 import {
@@ -498,22 +498,6 @@ export function TrackMenuHost(props: { onOpenPlaylist: (id: string) => void }) {
                     <button class="menu-item" role="menuitem" onClick={act((m) => toggleLike(m.tracks[0]))}>
                       <IconHeart filled={isLiked(t())} /> {isLiked(t()) ? tr.removeFromLiked : tr.addToLiked}
                     </button>
-                    <Show when={t().source === "jamendo" && t().downloadAllowed === true}>
-                      <button
-                        class="menu-item"
-                        role="menuitem"
-                        onClick={act(async (m) => {
-                          try {
-                            await api.downloadOffline(m.tracks[0]);
-                            notify(tr.offlineDownloaded(m.tracks[0].title));
-                          } catch (e) {
-                            notify(String(e), "error");
-                          }
-                        })}
-                      >
-                        <IconDownload /> {tr.downloadOffline}
-                      </button>
-                    </Show>
                   </>
                 )}
               </Show>

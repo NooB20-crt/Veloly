@@ -1,6 +1,14 @@
 # Changelog
 
-What's new in 555, version by version. The latest is at the top.
+What's new in Veloly, version by version. The latest is at the top.
+
+## 0.4.2 — 2026-11-23
+
+### New
+
+- Personalize the primary and secondary interface colors, with a one-click reset.
+- Reorder the Next Up list with drag and drop on desktop and touch devices.
+- The iOS build is now produced as an unsigned IPA artifact by GitHub Actions.
 
 ## 0.4.1 — 2026-11-21
 

@@ -1,0 +1,78 @@
+name: Build iOS IPA
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/ios-build.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ipa:
+    name: Build unsigned iOS IPA
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          key: iOS-ipa
+
+      - name: Install frontend dependencies
+        working-directory: app
+        run: npm ci
+
+      - name: Build iOS archive
+        working-directory: app
+        shell: bash
+        run: |
+          set +e
+          npx tauri ios build --target aarch64
+          build_status=$?
+          set -e
+          app_bundle="src-tauri/gen/apple/build/yato_iOS.xcarchive/Products/Applications/Veloly.app"
+          if [ ! -x "$app_bundle/Veloly" ]; then
+            echo "::error::iOS app archive was not produced (tauri exit code $build_status)."
+            exit 1
+          fi
+
+      - name: Package unsigned IPA
+        working-directory: app
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./package.json').version")
+          app_bundle="src-tauri/gen/apple/build/yato_iOS.xcarchive/Products/Applications/Veloly.app"
+          mkdir -p "$RUNNER_TEMP/ipa/Payload"
+          cp -R "$app_bundle" "$RUNNER_TEMP/ipa/Payload/"
+          plist="$RUNNER_TEMP/ipa/Payload/Veloly.app/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $version" "$plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $GITHUB_RUN_NUMBER" "$plist"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$plist"
+          (cd "$RUNNER_TEMP/ipa" && zip -qry "$GITHUB_WORKSPACE/Veloly-${version}-ios.ipa" Payload)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Veloly-iOS-${{ github.run_number }}
+          path: Veloly-*-ios.ipa
+          if-no-files-found: error
+          retention-days: 30

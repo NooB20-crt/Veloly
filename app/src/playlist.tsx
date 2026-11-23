@@ -4,7 +4,7 @@ import { api, formatTime, type Snapshot, type Track } from "./api";
 import {
   collection, deletePlaylist, imageToCover, moveInPlaylist, notify, openTrackMenu, playlistById, renamePlaylist, setPlaylistCover,
 } from "./collection";
-import { IconClose, IconDownload, IconEdit, IconHeart, IconImage, IconMore, IconPlay, IconPlaylist, IconTrash } from "./icons";
+import { IconClose, IconEdit, IconHeart, IconImage, IconMore, IconPlay, IconPlaylist, IconTrash } from "./icons";
 import { PlaylistArt, TrackList } from "./ui";
 import { t } from "./i18n";
 
@@ -58,7 +58,6 @@ export function PlaylistView(props: Common & { id: string; editing: boolean; onD
   const playlist = () => playlistById(props.id);
   const [editing, setEditing] = createSignal(false);
   const [confirmDelete, setConfirmDelete] = createSignal(false);
-  const [offlineProgress, setOfflineProgress] = createSignal<[number, number] | null>(null);
   createEffect(on(() => [props.id, props.editing] as const, ([, e]) => {
     setEditing(e);
     setConfirmDelete(false);
@@ -88,26 +87,6 @@ export function PlaylistView(props: Common & { id: string; editing: boolean; onD
       return;
     }
     if (await deletePlaylist(props.id)) props.onDeleted();
-  };
-
-  const downloadOffline = async (tracks: Track[]) => {
-    if (offlineProgress()) return;
-    const eligible = tracks.filter((track) => track.source === "jamendo" && track.downloadAllowed === true);
-    if (!eligible.length) return;
-    let saved = 0;
-    let failed = 0;
-    setOfflineProgress([0, eligible.length]);
-    for (const track of eligible) {
-      try {
-        await api.downloadOffline(track);
-        saved++;
-      } catch {
-        failed++;
-      }
-      setOfflineProgress([saved + failed, eligible.length]);
-    }
-    setOfflineProgress(null);
-    notify(t.offlinePlaylistDone(saved, eligible.length), failed ? "error" : "info");
   };
 
   return (
@@ -162,11 +141,6 @@ export function PlaylistView(props: Common & { id: string; editing: boolean; onD
                 <Show when={p().tracks.length > 0}> · {formatTime(total(p().tracks))}</Show>
               </p>
               <div class="actions hero-play">
-                <Show when={p().tracks.some((track) => track.source === "jamendo" && track.downloadAllowed === true)}>
-                  <button class="ghost" disabled={!!offlineProgress()} onClick={() => void downloadOffline(p().tracks)}>
-                    <IconDownload /> {offlineProgress() ? t.offlinePlaylistProgress(...offlineProgress()!) : t.offlinePlaylistButton}
-                  </button>
-                </Show>
                 <Show when={p().tracks.length > 0}>
                   <button class="primary" onClick={() => props.onPlay(p().tracks, 0)}>
                     <IconPlay size={18} /> {t.play}

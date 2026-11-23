@@ -141,6 +141,8 @@ struct State {
     next_key: u64,
     /// Morceau de la file d'attente en cours (il n'est pas dans `queue`).
     queued: Option<Track>,
+    /// Ordre manuel de la suite de la liste, sans changer la file entière.
+    upcoming_override: Option<Vec<usize>>,
 }
 
 impl State {
@@ -188,7 +190,8 @@ impl State {
     fn next_target(&self, wrap: bool) -> Option<Target> {
         match self.up_next.first() {
             Some(q) => Some(Target::Queued(q.key)),
-            None => self.next_index(wrap).map(Target::List),
+            None => self.upcoming_override.as_ref().and_then(|items| items.first()).copied()
+                .or_else(|| self.next_index(wrap)).map(Target::List),
         }
     }
 
@@ -223,6 +226,11 @@ impl State {
             Target::List(i) => {
                 self.index = Some(i);
                 self.queued = None;
+                let clear_override = self.upcoming_override.as_mut().is_some_and(|items| {
+                    items.retain(|&item| item != i);
+                    items.is_empty()
+                });
+                if clear_override { self.upcoming_override = None; }
             }
             Target::Queued(k) => {
                 self.up_next.retain(|q| q.key != k);
@@ -234,12 +242,24 @@ impl State {
 
     /// Suite de la liste après le morceau en cours (en reprenant au début en répétition).
     fn upcoming(&self, max: usize) -> Vec<Track> {
-        let ids: Vec<usize> = match self.order_pos() {
+        self.upcoming_indices(max).into_iter().filter_map(|i| self.queue.get(i).cloned()).collect()
+    }
+
+    fn upcoming_indices(&self, max: usize) -> Vec<usize> {
+        if let Some(items) = &self.upcoming_override { return items.iter().copied().take(max).collect(); }
+        match self.order_pos() {
             Some(p) if self.repeat == Repeat::All => self.order[p + 1..].iter().chain(&self.order[..p]).copied().take(max).collect(),
             Some(p) => self.order[p + 1..].iter().copied().take(max).collect(),
             None => self.order.iter().copied().take(max).collect(),
-        };
-        ids.into_iter().filter_map(|i| self.queue.get(i).cloned()).collect()
+        }
+    }
+
+    fn move_upcoming(&mut self, from: usize, to: usize) {
+        let mut items = self.upcoming_override.take().unwrap_or_else(|| self.upcoming_indices(usize::MAX));
+        if from >= items.len() { self.upcoming_override = Some(items); return; }
+        let item = items.remove(from);
+        items.insert(to.min(items.len()), item);
+        self.upcoming_override = Some(items);
     }
 
     /// Ajoute des morceaux à la file d'attente : au début (« Lire ensuite ») ou à la fin.
@@ -324,6 +344,7 @@ impl Controller {
                 up_next: Vec::new(),
                 next_key: 0,
                 queued: None,
+                upcoming_override: None,
             }),
             generation: AtomicU64::new(0),
             fade_generation: AtomicU64::new(0),
@@ -404,6 +425,7 @@ impl Controller {
             st.queue = tracks;
             st.index = Some(index);
             st.queued = None;
+            st.upcoming_override = None;
             st.rebuild_order();
         }
         self.load(Target::List(index)).await
@@ -413,6 +435,7 @@ impl Controller {
     pub async fn play_index(&self, index: usize) -> Result<()> {
         {
             let mut st = self.state.lock();
+            st.upcoming_override = None;
             if st.shuffle {
                 st.index = Some(index);
                 st.rebuild_order();
@@ -441,6 +464,12 @@ impl Controller {
         self.prefetch_next(&st);
     }
 
+    pub fn move_upcoming(&self, from: usize, to: usize) {
+        let mut st = self.state.lock();
+        st.move_upcoming(from, to);
+        self.prefetch_next(&st);
+    }
+
     pub fn clear_queued(&self) {
         let mut st = self.state.lock();
         st.up_next.clear();
@@ -456,6 +485,7 @@ impl Controller {
         let mut st = self.state.lock();
         if st.shuffle != on {
             st.shuffle = on;
+            st.upcoming_override = None;
             st.rebuild_order();
         }
         self.prefetch_next(&st);
@@ -464,6 +494,7 @@ impl Controller {
     pub fn set_repeat(&self, repeat: Repeat) {
         let mut st = self.state.lock();
         st.repeat = repeat;
+        st.upcoming_override = None;
         self.prefetch_next(&st);
     }
 
@@ -477,9 +508,6 @@ impl Controller {
         let s = settings.clamped();
         self.fx.set(s);
         self.speed.store(s.speed.to_bits(), Ordering::Relaxed);
-        for p in &self.players {
-            p.set_speed(s.speed);
-        }
     }
 
     /// Niveau des basses, médiums, aigus et de l'ensemble (0 à 1 environ), mesuré sur le son
@@ -732,7 +760,8 @@ impl Controller {
             return self.seek(0.0);
         }
         let prev = {
-            let st = self.state.lock();
+            let mut st = self.state.lock();
+            st.upcoming_override = None;
             st.previous_target(st.repeat != Repeat::Off)
         };
         match prev {
@@ -760,11 +789,8 @@ impl Controller {
             }
         }
         self.cancel_fade();
-        // Le changement de vitesse de rodio multiplie la position demandée par la vitesse
-        // (il la prend pour du temps écoulé) : on la divise d'abord, pour que le décodeur
-        // arrive bien à `seconds` dans le morceau.
         self.player()
-            .try_seek(Duration::from_secs_f64(seconds.max(0.0) / f64::from(self.speed())))
+            .try_seek(Duration::from_secs_f64(seconds.max(0.0)))
             .map_err(|e| Error::Decode(e.to_string()))?;
         // Après un saut, la position compte depuis le début du morceau.
         self.state.lock().offset = 0.0;
@@ -1004,7 +1030,7 @@ mod tests {
         let mut st = State {
             queue: (0..len).map(track).collect(), index: Some(index), status: Status::Idle, volume: 1.0, duration: None,
             error: None, shuffle, repeat: Repeat::Off, order: Vec::new(), resume_at: None, offset: 0.0, crossfade: 0.0, fading: false,
-            no_fade_for: None, up_next: Vec::new(), next_key: 0, queued: None,
+            no_fade_for: None, up_next: Vec::new(), next_key: 0, queued: None, upcoming_override: None,
         };
         st.rebuild_order();
         st

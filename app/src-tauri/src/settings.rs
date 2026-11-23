@@ -1,6 +1,6 @@
 //! Réglages de l'app et écoute en cours, gardés dans de petits fichiers JSON.
 
-use std::{fs, path::Path};
+use std::{collections::BTreeMap, fs, path::Path};
 
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
@@ -12,17 +12,64 @@ pub struct Settings {
     pub crossfade: f64,
     /// Reprendre l'écoute (file, morceau, position) au lancement.
     pub resume: bool,
+    /// Ne lire que les fichiers audio présents sur l'appareil.
+    pub offline_only: bool,
     /// Égaliseur, réverbération et vitesse.
     pub fx: yato_core::fx::FxSettings,
+    /// Profil d'effets mémorisé pour chaque sortie audio.
+    pub output_profiles: BTreeMap<String, yato_core::fx::FxSettings>,
     /// Sortie audio choisie (identifiant) ; `None` : celle du système.
     pub output_device: Option<String>,
     /// Identifiant public d'application Jamendo, fourni par son portail développeur.
     pub jamendo_client_id: Option<String>,
+    /// Couleurs de marque choisies par l'utilisateur.
+    pub customization: Customization,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Customization {
+    pub primary_color: String,
+    pub secondary_color: String,
+}
+
+impl Default for Customization {
+    fn default() -> Self {
+        Self { primary_color: "#9718ed".into(), secondary_color: "#d17aff".into() }
+    }
+}
+
+impl Customization {
+    pub fn sanitize(&mut self) {
+        sanitize_color(&mut self.primary_color, "#9718ed");
+        sanitize_color(&mut self.secondary_color, "#d17aff");
+    }
+}
+
+fn sanitize_color(value: &mut String, fallback: &str) {
+    if value.len() != 7 || !value.starts_with('#') || !value[1..].chars().all(|c| c.is_ascii_hexdigit()) {
+        *value = fallback.into();
+    } else {
+        value.make_ascii_lowercase();
+    }
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { crossfade: 0.0, resume: true, fx: Default::default(), output_device: None, jamendo_client_id: None }
+        Self { crossfade: 0.0, resume: true, offline_only: false, fx: Default::default(), output_profiles: BTreeMap::new(), output_device: None, jamendo_client_id: None, customization: Customization::default() }
+    }
+}
+
+impl Settings {
+    /// Les réglages retirés de l'interface reprennent leurs valeurs sûres.
+    pub fn retire_removed_sound_options(&mut self) {
+        fn reset(fx: &mut yato_core::fx::FxSettings) {
+            fx.normalize = false;
+            fx.limiter = true;
+            fx.channel_mode = yato_core::fx::ChannelMode::Stereo;
+        }
+        reset(&mut self.fx);
+        for fx in self.output_profiles.values_mut() { reset(fx); }
     }
 }
 

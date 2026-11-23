@@ -4,6 +4,8 @@
 import { createMemo, createSignal } from "solid-js";
 import { api, type Collection, type Playlist, type Track } from "./api";
 import { t } from "./i18n";
+import { offlineMode } from "./offline-mode";
+import { userError } from "./error-message";
 
 const [collection, setRawCollection] = createSignal<Collection>({ liked: [], playlists: [], history: [] });
 export { collection };
@@ -50,7 +52,7 @@ export function notify(text: string, kind: Toast["kind"] = "info") {
   toastTimer = window.setTimeout(() => setToast(null), kind === "error" ? 5000 : 2600);
 }
 export const dismissToast = () => setToast(null);
-const fail = (e: unknown) => notify(String(e), "error");
+const fail = (e: unknown) => notify(userError(e), "error");
 
 /** Applique une modification ; renvoie la collection à jour, ou `null` en cas d'échec. */
 async function apply(action: Promise<Collection>): Promise<Collection | null> {
@@ -175,8 +177,13 @@ export async function addToPlaylist(id: string, tracks: Track[]) {
 /** Ajoute à la file d'attente (`first` : « Lire ensuite »), avec un petit message. */
 export async function enqueue(tracks: Track[], first: boolean) {
   if (!tracks.length) return;
-  await api.enqueue(tracks, first);
-  notify(first ? t.playingNext(tracks.length) : t.addedToQueue(tracks.length));
+  const available = offlineMode() ? tracks.filter((track) => track.location.kind === "file") : tracks;
+  if (!available.length) {
+    notify(t.offlineModeUnavailable, "error");
+    return;
+  }
+  await api.enqueue(available, first);
+  notify(first ? t.playingNext(available.length) : t.addedToQueue(available.length));
 }
 
 // ---------- Menu d'un morceau (clic droit, bouton « ⋯ ») ----------

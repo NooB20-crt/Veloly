@@ -2,7 +2,8 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { createSignal, For, onCleanup, onMount, Show, type JSX } from "solid-js";
-import { api, FLAT_FX, type Settings } from "./api";
+import { api, DEFAULT_CUSTOMIZATION, FLAT_FX, type Customization, type Settings } from "./api";
+import { applyCustomization } from "./customization";
 import { EqPanel } from "./eq";
 import { fx, setFx } from "./fx-store";
 import { setVisualizerOn, visualizerOn } from "./visualizer";
@@ -10,6 +11,7 @@ import { clearHistory, collection, exportCollectionBackup, importCollectionBacku
 import { IconClose, IconLink } from "./icons";
 import { lang, LANGUAGES, setLang, t, type Lang } from "./i18n";
 import { eventShortcut, resetShortcuts, setShortcut, shortcutLabel, shortcutMap, type ShortcutAction } from "./shortcuts";
+import { userError } from "./error-message";
 
 /** Une ligne de réglage : intitulé, explication, et la commande à droite. */
 function Row(props: { title: string; hint?: string; children?: JSX.Element }) {
@@ -44,9 +46,11 @@ export function SettingsView(props: { onImport: () => void; onLibrary: () => voi
 
   onMount(async () => {
     try {
-      setSettings(await api.getSettings());
+      const loaded = await api.getSettings();
+      setSettings(loaded);
+      applyCustomization(loaded.customization);
     } catch (e) {
-      notify(String(e), "error");
+      notify(userError(e), "error");
     }
     getVersion().then(setVersion).catch(() => {});
   });
@@ -58,12 +62,20 @@ export function SettingsView(props: { onImport: () => void; onLibrary: () => voi
     // Les effets se règlent ailleurs (égaliseur) : on garde toujours leur valeur la plus récente.
     const next = { ...cur, ...patch, fx: fx() };
     setSettings(next);
+    if (patch.customization) applyCustomization(next.customization);
     try {
       setSettings(await api.setSettings(next));
     } catch (e) {
       setSettings(cur);
-      notify(String(e), "error");
+      if (patch.customization) applyCustomization(cur.customization);
+      notify(userError(e), "error");
     }
+  };
+
+  const updateCustomization = (patch: Partial<Customization>) => {
+    const cur = settings();
+    if (!cur) return;
+    void change({ customization: { ...DEFAULT_CUSTOMIZATION, ...cur.customization, ...patch } });
   };
 
   const crossfadeLabel = (s: number) => (s === 0 ? t.off : `${s} s`);
@@ -136,6 +148,23 @@ export function SettingsView(props: { onImport: () => void; onLibrary: () => voi
                     )}
                   </For>
                 </div>
+              </Row>
+            </section>
+
+            <section class="settings-group">
+              <h2 class="section-title">{t.customization}</h2>
+              <Row title={t.primaryColor} hint={t.primaryColorHint}>
+                <div class="actions">
+                  <input class="custom-color" type="color" value={s().customization?.primaryColor ?? DEFAULT_CUSTOMIZATION.primaryColor} aria-label={t.primaryColor}
+                    onInput={(e) => { const customization = { ...DEFAULT_CUSTOMIZATION, ...s().customization, primaryColor: e.currentTarget.value }; setSettings({ ...s(), customization }); applyCustomization(customization); }}
+                    onChange={(e) => updateCustomization({ primaryColor: e.currentTarget.value })} />
+                  <button class="ghost custom-color-reset" onClick={() => updateCustomization(DEFAULT_CUSTOMIZATION)}>{t.resetColors}</button>
+                </div>
+              </Row>
+              <Row title={t.secondaryColor} hint={t.secondaryColorHint}>
+                <input class="custom-color" type="color" value={s().customization?.secondaryColor ?? DEFAULT_CUSTOMIZATION.secondaryColor} aria-label={t.secondaryColor}
+                  onInput={(e) => { const customization = { ...DEFAULT_CUSTOMIZATION, ...s().customization, secondaryColor: e.currentTarget.value }; setSettings({ ...s(), customization }); applyCustomization(customization); }}
+                  onChange={(e) => updateCustomization({ secondaryColor: e.currentTarget.value })} />
               </Row>
             </section>
 

@@ -21,7 +21,10 @@ const presetName = (id: (typeof PRESETS)[number]["id"]) =>
   ({ normal: t.presetNormal, slowed: t.presetSlowed, spedUp: t.presetSpedUp, bass: t.presetBass, radio: t.presetRadio, warm: t.presetWarm })[id];
 
 const sameFx = (a: FxSettings, b: FxSettings) =>
-  (Object.keys(b) as (keyof FxSettings)[]).every((k) => Math.abs(a[k] - b[k]) < 1e-3);
+  (Object.keys(b) as (keyof FxSettings)[]).every((k) => {
+    const av = a[k], bv = b[k];
+    return av === bv || (typeof av === "number" && typeof bv === "number" && Math.abs(av - bv) < 1e-3);
+  });
 
 // ---------- Courbe de réponse (mêmes filtres que le moteur audio, voir fx.rs) ----------
 
@@ -236,6 +239,33 @@ export function EqPanel() {
       <EqGraph />
       <p class="eq-hint">{t.eqHint}</p>
       <FxRange
+        label={t.preamp}
+        min={-12}
+        max={12}
+        step={0.5}
+        value={fx().preamp}
+        text={`${fx().preamp > 0 ? "+" : ""}${fx().preamp.toFixed(1)} dB`}
+        onInput={(v) => patchFx({ preamp: v })}
+      />
+      <FxRange
+        label={t.balance}
+        min={-100}
+        max={100}
+        step={1}
+        value={Math.round(fx().balance * 100)}
+        text={fx().balance === 0 ? t.centered : fx().balance < 0 ? `${t.left} ${Math.abs(Math.round(fx().balance * 100))}%` : `${t.right} ${Math.round(fx().balance * 100)}%`}
+        onInput={(v) => patchFx({ balance: v / 100 })}
+      />
+      <FxRange
+        label={t.stereoWidth}
+        min={0}
+        max={200}
+        step={5}
+        value={Math.round(fx().stereoWidth * 100)}
+        text={fx().stereoWidth === 1 ? t.original : `${Math.round(fx().stereoWidth * 100)}%`}
+        onInput={(v) => patchFx({ stereoWidth: v / 100 })}
+      />
+      <FxRange
         label={t.radioEffect}
         min={0}
         max={100}
@@ -283,7 +313,7 @@ export function EqButton() {
   });
   const changed = () => !sameFx(fx(), FLAT_FX);
   return (
-    <div class="eq-pop" ref={root}>
+    <div class="eq-pop control-equalizer" ref={root}>
       <button
         classList={{ "icon-btn": true, active: open() || changed() }}
         title={t.equalizer}

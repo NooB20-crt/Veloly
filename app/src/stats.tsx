@@ -3,6 +3,7 @@
 import { createEffect, createMemo, createResource, createSignal, For, on, Show } from "solid-js";
 import { api, albumRefOf, type Period, type Snapshot, type Stats, type TopArtist, type Track } from "./api";
 import { notify } from "./collection";
+import { userError } from "./error-message";
 import { IconChart, IconTrash, IconUser, IconWaves } from "./icons";
 import { lang, locale, t } from "./i18n";
 import { openAlbum, openArtist } from "./nav";
@@ -110,7 +111,7 @@ export function StatsView(props: { snap: Snapshot; onPlay: (tracks: Track[], ind
       notify(t.statsCleared);
       refetch();
     } catch (e) {
-      notify(String(e), "error");
+      notify(userError(e), "error");
     }
   };
 

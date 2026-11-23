@@ -6,6 +6,8 @@ import { IconSpeaker } from "./icons";
 import { t as tr } from "./i18n";
 import { isAndroid } from "./mobile";
 import { notify } from "./collection";
+import { userError } from "./error-message";
+import { refreshFx } from "./fx-store";
 import { Popover } from "./queue";
 
 /** Android et iOS : une seule sortie, choisie par le système. */
@@ -35,9 +37,10 @@ function DevicePanel(props: { close: () => void }) {
   const pick = async (id: string | null) => {
     try {
       mutate(await api.setOutputDevice(id));
+      await refreshFx();
       props.close();
     } catch (e) {
-      notify(tr.deviceError(String(e)));
+      notify(tr.deviceError(userError(e)), "error");
     }
   };
   const isOn = (d: OutputDevice) => list()?.active === d.id;

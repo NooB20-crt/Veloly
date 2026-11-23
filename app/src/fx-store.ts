@@ -20,6 +20,17 @@ export function loadFx() {
     .catch(() => (loaded = false));
 }
 
+/** Recharge le profil associé à la sortie audio sélectionnée. */
+export async function refreshFx() {
+  try {
+    const settings = await api.getSettings();
+    setSignal({ ...FLAT_FX, ...settings.fx });
+    loaded = true;
+  } catch {
+    loaded = false;
+  }
+}
+
 let writing = false;
 let dirty = false;
 

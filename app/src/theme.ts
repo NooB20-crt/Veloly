@@ -10,8 +10,11 @@ import {
   SchemeContent,
 } from "@material/material-color-utilities";
 
-/** Violet de marque, conservé même lorsque la pochette du morceau change. */
-const BRAND_SOURCE = argbFromHex("#9718ed");
+/** Couleurs de marque, conservées même lorsque la pochette du morceau change. */
+const DEFAULT_PRIMARY = "#9718ed";
+const DEFAULT_SECONDARY = "#d17aff";
+let primarySource = argbFromHex(DEFAULT_PRIMARY);
+let secondarySource = argbFromHex(DEFAULT_SECONDARY);
 
 /** Rôles Material 3 utilisés par l'interface → variable CSS `--md-<nom>`. */
 const ROLES: Record<string, DynamicColor> = {
@@ -39,23 +42,39 @@ const ROLES: Record<string, DynamicColor> = {
   "on-error-container": C.onErrorContainer,
 };
 
-let current = -1;
+let current = "";
 
 /** Applique le schéma Material 3 sombre d'une couleur source. */
-function apply(source: number) {
-  if (source === current) return;
-  current = source;
-  const scheme = new SchemeContent(Hct.fromInt(source), true, 0);
+function apply(primary: number, secondary: number) {
+  const key = `${primary}:${secondary}`;
+  if (key === current) return;
+  current = key;
+  const scheme = new SchemeContent(Hct.fromInt(primary), true, 0);
+  const secondaryScheme = new SchemeContent(Hct.fromInt(secondary), true, 0);
   const root = document.documentElement.style;
   for (const [name, color] of Object.entries(ROLES)) {
-    root.setProperty(`--md-${name}`, hexFromArgb(color.getArgb(scheme)));
+    const sourceScheme = name.startsWith("secondary-") || name.startsWith("tertiary") ? secondaryScheme : scheme;
+    const sourceColor = name === "secondary-container" ? C.primaryContainer
+      : name === "on-secondary-container" ? C.onPrimaryContainer
+      : name === "tertiary" ? C.primary
+      : name === "tertiary-container" ? C.primaryContainer
+      : color;
+    root.setProperty(`--md-${name}`, hexFromArgb(sourceColor.getArgb(sourceScheme)));
   }
 }
 
 /** La pochette change le fond flou, mais pas la couleur de marque de l'interface. */
 export function themeFromCover(_url: string | null) {
-  apply(BRAND_SOURCE);
+  apply(primarySource, secondarySource);
+}
+
+/** Choisit les graines Material des deux couleurs personnalisées. */
+export function setBrandColors(primary: string, secondary: string) {
+  if (!/^#[0-9a-f]{6}$/i.test(primary) || !/^#[0-9a-f]{6}$/i.test(secondary)) return;
+  primarySource = argbFromHex(primary);
+  secondarySource = argbFromHex(secondary);
+  apply(primarySource, secondarySource);
 }
 
 // Palette violette dès le démarrage.
-apply(BRAND_SOURCE);
+apply(primarySource, secondarySource);

@@ -88,6 +88,18 @@ impl LocalLibrary {
         self.inner.read().tracks.clone()
     }
 
+    /// Taille occupée par les fichiers audio référencés dans la bibliothèque (sans doublons).
+    pub fn size_bytes(&self) -> u64 {
+        let mut seen = std::collections::HashSet::new();
+        self.tracks()
+            .into_iter()
+            .filter_map(|track| match track.location {
+                Location::File { path } if seen.insert(path.clone()) => fs::metadata(path).ok().map(|m| m.len()),
+                _ => None,
+            })
+            .sum()
+    }
+
     pub fn len(&self) -> usize {
         self.inner.read().tracks.len()
     }
