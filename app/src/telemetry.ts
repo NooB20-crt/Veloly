@@ -2,9 +2,32 @@ const consentKey = "veloly.telemetry.firstLaunchConsent.v1";
 const installIdKey = "veloly.telemetry.installId.v1";
 const sentKey = "veloly.telemetry.firstLaunchSent.v1";
 const pendingDeleteKey = "veloly.telemetry.firstLaunchPendingDelete.v1";
+const feedbackClientKey = "veloly.feedback.clientId.v1";
 const endpoint = (import.meta.env.VITE_VELOLY_TELEMETRY_URL as string | undefined)?.trim().replace(/\/$/, "");
 
 export const launchTelemetryAvailable = () => !!endpoint;
+export const feedbackAvailable = () => !!endpoint;
+
+/** Sends only the text the user submits, with an anonymous local ID used for a short cooldown. */
+export async function sendFeedback(category: "idea" | "bug" | "other", message: string, version: string) {
+  if (!endpoint) throw new Error("feedback_unavailable");
+  let clientId: string;
+  try {
+    clientId = localStorage.getItem(feedbackClientKey) ?? crypto.randomUUID();
+    localStorage.setItem(feedbackClientKey, clientId);
+  } catch {
+    clientId = crypto.randomUUID();
+  }
+  const response = await fetch(`${endpoint}/v1/feedback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ category, message, version, clientId }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({})) as { error?: string };
+    throw new Error(body.error ?? `feedback_http_${response.status}`);
+  }
+}
 
 export function launchTelemetryEnabled(): boolean {
   try {

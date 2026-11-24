@@ -2,6 +2,8 @@
 
 The counter is opt-in in the app. When enabled, one random installation UUID is sent once; the Worker stores only its SHA-256 hash and first-seen date. It does not receive account names, song data, listening history, or an IP field. Turning the setting off asks the Worker to remove that installation's count. The total is installations that opted in, not people or all downloads.
 
+The feedback form is separate from the counter consent: nothing is sent until the user submits a message. The Worker forwards only the selected category, message and app version to the Veloly Discord webhook. It never sends songs or listening history. A hash of a random local client ID is kept in D1 for at most 24 hours to enforce a one-minute cooldown.
+
 The GitHub Pages site is static, so it cannot safely store an admin password or write protected statistics by itself. This Cloudflare Worker + D1 service provides the write endpoint and password-protected admin API. The admin page is `https://noob20-crt.github.io/Veloly/admin.html`; the page asks for the Worker URL and the admin token each time and does not save either.
 
 ## One-time Cloudflare setup
@@ -18,10 +20,13 @@ Copy the `database_id` returned by Cloudflare into `wrangler.toml`, replacing `R
 ```powershell
 npx wrangler d1 migrations apply veloly-first-launch --remote
 npx wrangler secret put ADMIN_TOKEN
+npx wrangler secret put DISCORD_FEEDBACK_WEBHOOK_URL
 npx wrangler deploy
 ```
 
 When prompted for `ADMIN_TOKEN`, enter a long random password and keep it private. `wrangler deploy` prints the Worker URL (ending in `.workers.dev`).
+
+Create the Discord webhook in a private channel for Veloly feedback, then paste its URL only into the `DISCORD_FEEDBACK_WEBHOOK_URL` prompt. Do not put the webhook URL in the app, a GitHub variable, or a committed file. The app sends feedback through the Worker, which keeps the webhook secret server-side. Run the D1 migrations again after updating this project so the feedback cooldown table exists.
 
 ## Connect app builds
 

@@ -13,7 +13,8 @@ import { lang, LANGUAGES, setLang, t, type Lang } from "./i18n";
 import { eventShortcut, resetShortcuts, setShortcut, shortcutLabel, shortcutMap, type ShortcutAction } from "./shortcuts";
 import { userError } from "./error-message";
 import { UpdateCard } from "./update-card";
-import { launchTelemetryAvailable, launchTelemetryEnabled, setLaunchTelemetryEnabled } from "./telemetry";
+import { FeedbackDialog } from "./feedback";
+import { feedbackAvailable, launchTelemetryAvailable, launchTelemetryEnabled, setLaunchTelemetryEnabled } from "./telemetry";
 
 /** Une ligne de réglage : intitulé, explication, et la commande à droite. */
 function Row(props: { title: string; hint?: string; children?: JSX.Element }) {
@@ -40,10 +41,11 @@ function Toggle(props: { on: boolean; label: string; onChange: (on: boolean) => 
   );
 }
 
-export function SettingsView(props: { onImport: () => void; onLibrary: () => void; onHistory: () => void }) {
+export function SettingsView(props: { onImport: () => void; onLibrary: () => void; onHistory: () => void; onReplayTour: () => void }) {
   const [settings, setSettings] = createSignal<Settings | null>(null);
   const [version, setVersion] = createSignal("");
   const [shareLaunchCount, setShareLaunchCount] = createSignal(false);
+  const [feedbackOpen, setFeedbackOpen] = createSignal(false);
   const [listeningShortcut, setListeningShortcut] = createSignal<ShortcutAction | null>(null);
   let shortcutCapture: ((e: KeyboardEvent) => void) | undefined;
 
@@ -293,9 +295,20 @@ export function SettingsView(props: { onImport: () => void; onLibrary: () => voi
             <section class="settings-group">
               <h2 class="section-title">Veloly</h2>
               <Row title={t.version(version() || "-")} />
+              <Row title={t.replayTour} hint={t.replayTourHint}>
+                <button class="ghost" onClick={props.onReplayTour}>{t.replayTourButton}</button>
+              </Row>
+              <Show when={feedbackAvailable()}>
+                <Row title={t.feedbackTitle} hint={t.feedbackSettingHint}>
+                  <button class="ghost" onClick={() => setFeedbackOpen(true)}>{t.feedbackOpen}</button>
+                </Row>
+              </Show>
             </section>
           </>
         )}
+      </Show>
+      <Show when={feedbackOpen()}>
+        <FeedbackDialog onClose={() => setFeedbackOpen(false)} onSent={() => { setFeedbackOpen(false); notify(t.feedbackSent); }} />
       </Show>
     </div>
   );

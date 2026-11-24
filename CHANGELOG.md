@@ -2,6 +2,14 @@
 
 What's new in Veloly, version by version. The latest is at the top.
 
+## 0.4.5 — 2026-11-24
+
+### New
+
+- Reopen the interactive product tour from Settings.
+- Send an idea or bug report to the Veloly team through the protected Discord feedback relay.
+- The feedback relay validates messages and limits repeat submissions without exposing the Discord webhook in the app.
+
 ## 0.4.4 — 2026-11-24
 
 ### New

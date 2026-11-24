@@ -810,7 +810,7 @@ export default function App() {
             </Match>
 
             <Match when={view() === "settings"}>
-              <SettingsView onImport={() => setImporting(true)} onLibrary={() => goTo("library")} onHistory={() => goTo("history")} />
+              <SettingsView onImport={() => setImporting(true)} onLibrary={() => goTo("library")} onHistory={() => goTo("history")} onReplayTour={() => setWelcomeOpen(true)} />
             </Match>
 
             <Match when={view() === "discover"}>

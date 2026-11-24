@@ -1,6 +1,7 @@
 interface Env {
   DB: D1Database;
   ADMIN_TOKEN?: string;
+  DISCORD_FEEDBACK_WEBHOOK_URL?: string;
 }
 
 const allowedOrigins = new Set([
@@ -84,6 +85,61 @@ export default {
         "INSERT INTO installs (install_hash, first_seen) VALUES (?, ?) ON CONFLICT(install_hash) DO NOTHING",
       ).bind(hash, Math.floor(Date.now() / 1000)).run();
       return responseJson({ recorded: (result.meta.changes ?? 0) > 0 }, 200, origin);
+    }
+
+    if (request.method === "POST" && url.pathname === "/v1/feedback") {
+      if (!env.DISCORD_FEEDBACK_WEBHOOK_URL) return responseJson({ error: "feedback_unavailable" }, 503, origin);
+      let body: unknown;
+      try {
+        if (Number(request.headers.get("Content-Length") ?? 0) > 12_000) return responseJson({ error: "message_too_long" }, 413, origin);
+        body = await request.json();
+      } catch {
+        return responseJson({ error: "invalid_json" }, 400, origin);
+      }
+      const value = typeof body === "object" && body !== null ? body as Record<string, unknown> : {};
+      const category = value.category;
+      const message = typeof value.message === "string" ? value.message.trim() : "";
+      const version = typeof value.version === "string" && /^[0-9][0-9A-Za-z.+-]{0,30}$/.test(value.version) ? value.version : "unknown";
+      const clientId = value.clientId;
+      if (category !== "idea" && category !== "bug" && category !== "other") return responseJson({ error: "invalid_category" }, 400, origin);
+      if (message.length < 8 || message.length > 1500) return responseJson({ error: "invalid_message_length" }, 400, origin);
+      if (typeof clientId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(clientId)) {
+        return responseJson({ error: "invalid_client_id" }, 400, origin);
+      }
+      let webhook: URL;
+      try {
+        webhook = new URL(env.DISCORD_FEEDBACK_WEBHOOK_URL);
+      } catch {
+        return responseJson({ error: "feedback_unavailable" }, 503, origin);
+      }
+      if (webhook.protocol !== "https:" || !["discord.com", "discordapp.com"].includes(webhook.hostname) || !webhook.pathname.startsWith("/api/webhooks/")) {
+        return responseJson({ error: "feedback_unavailable" }, 503, origin);
+      }
+
+      const hash = await hashInstallId(clientId);
+      const now = Math.floor(Date.now() / 1000);
+      await env.DB.prepare("DELETE FROM feedback_rate_limits WHERE last_sent < ?").bind(now - 86_400).run();
+      const previous = await env.DB.prepare("SELECT last_sent FROM feedback_rate_limits WHERE client_hash = ?").bind(hash).first<{ last_sent: number }>();
+      if (previous && now - previous.last_sent < 60) return responseJson({ error: "rate_limited" }, 429, origin);
+
+      let sent: Response;
+      try {
+        sent = await fetch(webhook, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            content: `**Veloly feedback · ${category}**\n**Version:** ${version}\n\n${message}`,
+            allowed_mentions: { parse: [] },
+          }),
+        });
+      } catch {
+        return responseJson({ error: "discord_unavailable" }, 502, origin);
+      }
+      if (!sent.ok) return responseJson({ error: "discord_unavailable" }, 502, origin);
+      await env.DB.prepare(
+        "INSERT INTO feedback_rate_limits (client_hash, last_sent) VALUES (?, ?) ON CONFLICT(client_hash) DO UPDATE SET last_sent = excluded.last_sent",
+      ).bind(hash, now).run();
+      return responseJson({ sent: true }, 200, origin);
     }
 
     if (request.method === "GET" && url.pathname === "/v1/admin/stats") {
