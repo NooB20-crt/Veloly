@@ -46,15 +46,27 @@ Open `site/admin.html` on the published site, enter the Worker URL and `ADMIN_TO
 
 The counter cannot prove that a client is an authentic Veloly build: any public endpoint can be scripted. Treat it as an approximate count of installations that opted in. Cloudflare provides and operates the Worker/D1 infrastructure; review its current service and data-retention terms before enabling the endpoint.
 
-## Cloud accounts (username and password)
+## Cloud accounts and email recovery
 
-Account registration and login are served by this Worker and use the same D1 database, with separate `users`, `auth_sessions`, and `auth_rate_limits` tables. Before deploying the account endpoints, apply the new migration from this folder:
+Registration requires a username, an email address, and a password. Users must confirm their email before signing in; they can then log in with either their username or email. The email is private and is never included in public profile responses. Existing accounts from before email support keep working with their username; after signing in, they can add and confirm an email in the Profile panel to enable email login and password recovery.
+
+Password recovery sends a single-use link that expires after 30 minutes. Only its SHA-256 hash is stored in D1; using it replaces the password hash and revokes all existing sessions. Reset requests use a generic response and are rate-limited. Veloly never emails or stores a plaintext password.
+
+The Worker uses Cloudflare Email Service. Before deploying, onboard a sending domain in the Cloudflare dashboard (Compute → Email Service → Email Sending), then create a sender address on that domain. Set the Worker sender address as a secret:
+
+```powershell
+npx wrangler secret put EMAIL_FROM
+```
+
+Enter the sender, for example `no-reply@your-domain.example`, replacing it with an address on your configured domain. The Worker binding is declared in `wrangler.toml`. On Workers Free, outbound mail is limited to verified destination addresses in your Cloudflare account; sending password reset links to arbitrary users requires Workers Paid. See [Cloudflare Email Service](https://developers.cloudflare.com/email-service/) for current plan details.
+
+Apply all outstanding D1 migrations and deploy the Worker:
 
 ```powershell
 npx wrangler d1 migrations apply veloly-first-launch --remote
 npx wrangler deploy
 ```
 
-Usernames are normalized to lowercase and restricted to 3–24 ASCII letters, digits, or underscores. Passwords must be 12–128 characters. Veloly derives a salted PBKDF2-HMAC-SHA-256 hash (100,000 iterations, the current Cloudflare Workers per-call limit); the password is never stored or returned. Session tokens are random, kept in app memory, hashed before storage, and expire after 30 days. Login and registration attempts are rate-limited; rate-limit keys are hashes of the username/IP input, not raw IP addresses. All SQL values use D1 prepared statements and `.bind()` parameters.
+Usernames are normalized to lowercase and restricted to 3–24 ASCII letters, digits, or underscores. Emails are trimmed and normalized to lowercase. Passwords are 12–128 characters. Veloly derives a salted PBKDF2-HMAC-SHA-256 hash (100,000 iterations); the password is never stored or returned. Session tokens are random, kept in app memory, hashed before storage, and expire after 30 days. Email confirmation and reset tokens are random, single-use, expire, and are only stored as hashes. Login, registration, verification, and reset requests are rate-limited. All SQL values use D1 prepared statements and `.bind()` parameters.
 
-The app does not persist the session token between app restarts. There is no email collection, password reset, account deletion, or playlist synchronization. Signed-in users can create public playlist snapshots; each share stores the playlist name and track metadata (never local file paths or audio), and anyone with the unguessable link can view the list. Apply migration `0005_shared_playlists.sql` before deploying the Worker with playlist sharing. Users must keep their password safe; account recovery cannot be performed at this stage.
+The app does not persist the session token between app restarts. Signed-in users can create public playlist snapshots; each share stores the playlist name and track metadata (never local file paths or audio), and anyone with the unguessable link can view the list. Apply migration `0005_shared_playlists.sql` before deploying the Worker with playlist sharing. Migration `0006_email_accounts_and_recovery.sql` adds email and recovery tables while leaving pre-existing accounts without an email until users add and verify one.

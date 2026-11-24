@@ -8,3 +8,6 @@ binding = "DB"
 database_name = "veloly-first-launch"
 database_id = "fa7070d7-bbac-40d9-ab34-0d124ed9d9b8"
 migrations_dir = "migrations"
+
+[[send_email]]
+name = "EMAIL"

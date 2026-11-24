@@ -945,6 +945,9 @@ html[data-vt="back"]::view-transition-new(page) { animation: blur-in-back 0.55s 
 .share-playlist-dialog { width: min(520px, 100%); }
 .share-playlist-url { width: 100%; box-sizing: border-box; color: var(--text); user-select: all; }
 .account-help { margin: 0; color: var(--text-3); font-size: 11px; line-height: 1.45; }
+.account-forgot { justify-self: start; padding: 2px 0; color: var(--light); font-size: 12px; }
+.account-email-settings { display: grid; gap: 7px; padding: 12px; border-radius: var(--r-sm); background: var(--surface); }
+.account-email-settings .ghost { justify-self: start; min-height: 34px; padding: 0 12px; font-size: 12px; }
 .account-actions, .account-signed-in { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .account-signed-in { justify-content: space-between; }
 .account-actions .primary, .account-actions .ghost { min-height: 38px; padding: 0 16px; font-size: 13px; }

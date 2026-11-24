@@ -2,16 +2,21 @@ interface Env {
   DB: D1Database;
   ADMIN_TOKEN?: string;
   DISCORD_FEEDBACK_WEBHOOK_URL?: string;
+  EMAIL?: { send(message: { to: string; from: string; subject: string; text: string; html?: string }): Promise<{ messageId: string }> };
+  EMAIL_FROM?: string;
 }
 
 // Cloudflare Workers currently caps PBKDF2 at 100,000 iterations per deriveBits call.
 const PASSWORD_ITERATIONS = 100_000;
 const SESSION_SECONDS = 30 * 24 * 60 * 60;
 const AUTH_WINDOW_SECONDS = 15 * 60;
+const EMAIL_VERIFY_SECONDS = 24 * 60 * 60;
+const PASSWORD_RESET_SECONDS = 30 * 60;
 
-interface UserRow { id: string; username: string; password_hash: string }
+interface UserRow { id: string; username: string; password_hash: string; email: string | null; email_verified_at: number | null }
 interface SessionRow { user_id: string; username: string; expires_at: number }
 interface ProfileRow { username: string; profile_description: string; favorite_music: string; avatar_data: string | null; username_changed_at: number }
+interface EmailTokenRow { user_id: string; email: string; purpose: "email_verify" | "password_reset"; expires_at: number }
 const USERNAME_COOLDOWN_SECONDS = 7 * 24 * 60 * 60;
 
 const allowedOrigins = new Set([
@@ -101,6 +106,65 @@ function normalizeUsername(value: unknown): string | null {
   return /^[a-z0-9_]{3,24}$/.test(username) ? username : null;
 }
 
+function normalizeEmail(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const email = value.trim().toLowerCase();
+  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return null;
+  return email;
+}
+
+function normalizeLogin(value: unknown): { kind: "email" | "username"; value: string } | null {
+  if (typeof value !== "string") return null;
+  const email = normalizeEmail(value);
+  if (email) return { kind: "email", value: email };
+  const username = normalizeUsername(value);
+  return username ? { kind: "username", value: username } : null;
+}
+
+function authPage(title: string, message: string, form = ""): Response {
+  const html = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>${escapeHtml(title)} · Veloly</title><style>
+    :root{color-scheme:dark;font-family:system-ui,sans-serif;background:#080510;color:#f5f3fa}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:20px;background:radial-gradient(ellipse at 50% 0%,#35104d 0,transparent 58%),#080510}.card{width:min(480px,100%);padding:26px;border:1px solid #ffffff20;border-radius:22px;background:#120d1bef;box-shadow:0 28px 90px #0009}h1{margin:0 0 12px;font-size:23px}p{color:#c3bacd;line-height:1.55}label{display:grid;gap:7px;margin-top:14px;color:#d5ccdf;font-size:13px}input{width:100%;height:44px;padding:0 12px;border:1px solid #ffffff26;border-radius:10px;background:#ffffff0c;color:#fff;font:inherit}button,a{display:inline-flex;justify-content:center;align-items:center;min-height:42px;margin-top:16px;padding:0 18px;border:0;border-radius:999px;background:#9424dc;color:white;text-decoration:none;font:700 14px system-ui;cursor:pointer}
+  </style></head><body><main class="card"><h1>${escapeHtml(title)}</h1><p>${escapeHtml(message)}</p>${form}</main></body></html>`;
+  return new Response(html, { status: 200, headers: {
+    "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+  } });
+}
+
+async function emailToken(env: Env, userId: string, email: string, purpose: EmailTokenRow["purpose"], baseUrl: string): Promise<boolean> {
+  if (!env.EMAIL || !env.EMAIL_FROM) return false;
+  const token = secureToken();
+  const tokenHash = await sessionTokenHash(token);
+  const now = Math.floor(Date.now() / 1000);
+  const lifetime = purpose === "email_verify" ? EMAIL_VERIFY_SECONDS : PASSWORD_RESET_SECONDS;
+  const path = purpose === "email_verify" ? "/verify-email" : "/reset-password";
+  const link = new URL(path, baseUrl);
+  link.searchParams.set("token", token);
+  await env.DB.prepare("DELETE FROM auth_email_tokens WHERE user_id = ? AND purpose = ?").bind(userId, purpose).run();
+  await env.DB.prepare("DELETE FROM auth_email_tokens WHERE expires_at <= ?").bind(now).run();
+  await env.DB.prepare("INSERT INTO auth_email_tokens (token_hash, user_id, email, purpose, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+    .bind(tokenHash, userId, email, purpose, now + lifetime, now).run();
+  const title = purpose === "email_verify" ? "Confirme ton adresse e-mail Veloly" : "Réinitialise ton mot de passe Veloly";
+  const instruction = purpose === "email_verify"
+    ? "Confirme ton adresse e-mail pour activer ton compte Veloly."
+    : "Une demande de réinitialisation a été faite pour ton compte Veloly. Si tu n'en es pas à l'origine, ignore ce message.";
+  const expiry = purpose === "email_verify" ? "Ce lien expire dans 24 heures." : "Ce lien expire dans 30 minutes et ne peut être utilisé qu'une fois.";
+  const safeLink = escapeHtml(link.toString());
+  try {
+    await env.EMAIL.send({
+      to: email,
+      from: env.EMAIL_FROM,
+      subject: title,
+      text: `${instruction}\n\n${link}\n\n${expiry}`,
+      html: `<p>${escapeHtml(instruction)}</p><p><a href="${safeLink}">Continuer sur Veloly</a></p><p>${escapeHtml(expiry)}</p>`,
+    });
+    return true;
+  } catch {
+    await env.DB.prepare("DELETE FROM auth_email_tokens WHERE token_hash = ?").bind(tokenHash).run();
+    return false;
+  }
+}
+
 function validPassword(value: unknown): value is string {
   return typeof value === "string" && Array.from(value).length >= 12 && Array.from(value).length <= 128 && new TextEncoder().encode(value).length <= 512;
 }
@@ -128,6 +192,10 @@ function publicProfile(row: ProfileRow) {
     avatarData: row.avatar_data,
     usernameChangeAvailableAt: row.username_changed_at ? (row.username_changed_at + USERNAME_COOLDOWN_SECONDS) * 1000 : 0,
   };
+}
+
+function privateProfile(row: ProfileRow & { email: string | null; email_verified_at: number | null }) {
+  return { ...publicProfile(row), email: row.email, emailVerified: !!row.email_verified_at };
 }
 
 function escapeHtml(value: string): string {
@@ -242,10 +310,10 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const origin = request.headers.get("Origin");
-    if (origin && !allowedOrigins.has(origin)) return responseJson({ error: "origin_not_allowed" }, 403);
+    if (origin && origin !== url.origin && !allowedOrigins.has(origin)) return responseJson({ error: "origin_not_allowed" }, 403);
 
     if (request.method === "OPTIONS") {
-      if (!origin || !allowedOrigins.has(origin)) return new Response(null, { status: 403 });
+      if (!origin || (origin !== url.origin && !allowedOrigins.has(origin))) return new Response(null, { status: 403 });
       return new Response(null, {
         status: 204,
         headers: {
@@ -256,6 +324,55 @@ export default {
           Vary: "Origin",
         },
       });
+    }
+
+    if (request.method === "GET" && (url.pathname === "/verify-email" || url.pathname === "/reset-password")) {
+      const token = url.searchParams.get("token") ?? "";
+      if (!/^[A-Za-z0-9_-]{40,60}$/.test(token)) return authPage("Lien invalide", "Ce lien est invalide ou a expiré. Recommence depuis Veloly.");
+      const purpose = url.pathname === "/verify-email" ? "email_verify" : "password_reset";
+      const tokenHash = await sessionTokenHash(token);
+      const now = Math.floor(Date.now() / 1000);
+      const found = await env.DB.prepare("SELECT user_id, email, purpose, expires_at FROM auth_email_tokens WHERE token_hash = ? AND purpose = ? AND expires_at > ?")
+        .bind(tokenHash, purpose, now).first<EmailTokenRow>();
+      if (!found) return authPage("Lien expiré", "Ce lien n'est plus valide. Retourne dans Veloly pour demander un nouveau lien.");
+      if (purpose === "email_verify") {
+        return authPage("Confirme ton adresse e-mail", "Appuie sur le bouton pour confirmer l'adresse et activer ton compte Veloly.",
+          `<form method="post" action="/v1/auth/verify-email"><input type="hidden" name="token" value="${token}"><button type="submit">Confirmer mon adresse</button></form>`);
+      }
+      return authPage("Réinitialise ton mot de passe", "Choisis un nouveau mot de passe. Il doit contenir entre 12 et 128 caractères.",
+        `<form method="post" action="/v1/auth/reset-password"><input type="hidden" name="token" value="${token}"><label>Nouveau mot de passe<input type="password" name="password" minlength="12" maxlength="128" autocomplete="new-password" required></label><label>Confirmer le mot de passe<input type="password" name="confirmation" minlength="12" maxlength="128" autocomplete="new-password" required></label><button type="submit">Enregistrer le nouveau mot de passe</button></form>`);
+    }
+
+    if (request.method === "POST" && (url.pathname === "/v1/auth/verify-email" || url.pathname === "/v1/auth/reset-password")) {
+      const form = await request.formData().catch(() => null);
+      const token = form?.get("token");
+      if (typeof token !== "string" || !/^[A-Za-z0-9_-]{40,60}$/.test(token)) return authPage("Lien invalide", "Ce lien est invalide ou a expiré. Recommence depuis Veloly.");
+      const tokenHash = await sessionTokenHash(token);
+      const now = Math.floor(Date.now() / 1000);
+      const purpose = url.pathname.endsWith("verify-email") ? "email_verify" : "password_reset";
+      const found = await env.DB.prepare("SELECT user_id, email, purpose, expires_at FROM auth_email_tokens WHERE token_hash = ? AND purpose = ? AND expires_at > ?")
+        .bind(tokenHash, purpose, now).first<EmailTokenRow>();
+      if (!found) return authPage("Lien expiré", "Ce lien a déjà été utilisé ou n'est plus valide. Demande-en un nouveau depuis Veloly.");
+      if (purpose === "email_verify") {
+        try {
+          await env.DB.prepare("UPDATE users SET email = ?, email_verified_at = ? WHERE id = ?").bind(found.email, now, found.user_id).run();
+        } catch {
+          await env.DB.prepare("DELETE FROM auth_email_tokens WHERE token_hash = ?").bind(tokenHash).run();
+          return authPage("Adresse déjà utilisée", "Cette adresse e-mail est déjà associée à un autre compte Veloly.");
+        }
+        await env.DB.prepare("DELETE FROM auth_email_tokens WHERE user_id = ? AND purpose = 'email_verify'").bind(found.user_id).run();
+        return authPage("Adresse confirmée", "Ton adresse e-mail est confirmée. Retourne dans Veloly pour te connecter avec ton pseudo ou ton e-mail.");
+      }
+      const password = form?.get("password");
+      const confirmation = form?.get("confirmation");
+      if (!validPassword(password) || password !== confirmation) {
+        return authPage("Mot de passe invalide", "Les mots de passe doivent correspondre et contenir entre 12 et 128 caractères. Recharge le lien pour réessayer.");
+      }
+      const hashed = await passwordHash(password);
+      await env.DB.prepare("UPDATE users SET password_hash = ? WHERE id = ?").bind(hashed, found.user_id).run();
+      await env.DB.prepare("DELETE FROM auth_email_tokens WHERE user_id = ? AND purpose = 'password_reset'").bind(found.user_id).run();
+      await env.DB.prepare("DELETE FROM auth_sessions WHERE user_id = ?").bind(found.user_id).run();
+      return authPage("Mot de passe modifié", "Ton mot de passe a été réinitialisé. Retourne dans Veloly et connecte-toi avec ton nouveau mot de passe.");
     }
 
     if (request.method === "POST" && url.pathname === "/v1/shared-playlists") {
@@ -313,51 +430,107 @@ export default {
       if (!body) return authError("invalid_request", 400, origin);
       const username = normalizeUsername(body.username);
       if (!username) return authError("invalid_username", 400, origin);
+      const email = normalizeEmail(body.email);
+      if (!email) return authError("invalid_email", 400, origin);
       if (!validPassword(body.password)) return authError("weak_password", 400, origin);
+      if (!env.EMAIL || !env.EMAIL_FROM) return authError("email_service_unavailable", 503, origin);
       const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
       const now = Math.floor(Date.now() / 1000);
       if (!await rateLimit(env, `register:${ip}`, 5, now)) return authError("rate_limited", 429, origin);
 
       // Every account gets a random salt and a deliberately expensive PBKDF2 hash;
       // the password itself is never written to D1 or returned to the client.
-      const user: UserRow = { id: crypto.randomUUID(), username, password_hash: await passwordHash(body.password) };
+      const user: UserRow = { id: crypto.randomUUID(), username, password_hash: await passwordHash(body.password), email, email_verified_at: null };
       try {
-      await env.DB.prepare("INSERT INTO users (id, username, password_hash, created_at, username_changed_at) VALUES (?, ?, ?, ?, ?)")
-          .bind(user.id, user.username, user.password_hash, now, now).run();
+        await env.DB.prepare("INSERT INTO users (id, username, password_hash, created_at, username_changed_at, email) VALUES (?, ?, ?, ?, ?, ?)")
+          .bind(user.id, user.username, user.password_hash, now, now, email).run();
       } catch {
+        // Allow the owner of a still-pending registration to request its confirmation email again.
+        const pending = await env.DB.prepare("SELECT id, username, password_hash, email, email_verified_at FROM users WHERE username = ? OR email = ? COLLATE NOCASE")
+          .bind(username, email).first<UserRow>();
+        if (pending && pending.username === username && !pending.email_verified_at && await verifyPassword(body.password, pending.password_hash)) {
+          const anotherOwner = await env.DB.prepare("SELECT id FROM users WHERE email = ? COLLATE NOCASE AND id != ?").bind(email, pending.id).first<{ id: string }>();
+          if (anotherOwner) return authError("account_name_unavailable", 409, origin);
+          try {
+            await env.DB.prepare("UPDATE users SET email = ? WHERE id = ? AND email_verified_at IS NULL").bind(email, pending.id).run();
+          } catch {
+            return authError("account_name_unavailable", 409, origin);
+          }
+          if (!await emailToken(env, pending.id, email, "email_verify", url.origin)) return authError("email_delivery_failed", 503, origin);
+          return responseJson({ verificationRequired: true }, 202, origin);
+        }
         // Keep the response generic; only the account owner needs to know whether creation succeeded.
         return authError("account_name_unavailable", 409, origin);
       }
+      if (!await emailToken(env, user.id, email, "email_verify", url.origin)) {
+        await env.DB.prepare("DELETE FROM users WHERE id = ?").bind(user.id).run();
+        return authError("email_delivery_failed", 503, origin);
+      }
       await env.DB.prepare("DELETE FROM auth_rate_limits WHERE rate_key = ?").bind(await hashInstallId(`register:${ip}`)).run();
-      return issueSession(env, user, origin);
+      return responseJson({ verificationRequired: true }, 202, origin);
     }
 
     if (request.method === "POST" && url.pathname === "/v1/auth/login") {
       const body = await readJson(request);
       if (!body) return authError("invalid_request", 400, origin);
-      const username = normalizeUsername(body.username);
-      if (!username || typeof body.password !== "string" || body.password.length > 128) return authError("login_failed", 401, origin);
+      const login = normalizeLogin(body.login ?? body.username);
+      if (!login || typeof body.password !== "string" || body.password.length > 128) return authError("login_failed", 401, origin);
       const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
       const now = Math.floor(Date.now() / 1000);
-      if (!await rateLimit(env, `login:${username}:${ip}`, 8, now)) return authError("rate_limited", 429, origin);
-      const user = await env.DB.prepare("SELECT id, username, password_hash FROM users WHERE username = ?")
-        .bind(username).first<UserRow>();
+      if (!await rateLimit(env, `login:${login.value}:${ip}`, 8, now)) return authError("rate_limited", 429, origin);
+      const user = login.kind === "email"
+        ? await env.DB.prepare("SELECT id, username, password_hash, email, email_verified_at FROM users WHERE email = ? COLLATE NOCASE").bind(login.value).first<UserRow>()
+        : await env.DB.prepare("SELECT id, username, password_hash, email, email_verified_at FROM users WHERE username = ?").bind(login.value).first<UserRow>();
       if (!user) {
         // Spend comparable password-hash work so unknown names do not get a fast response.
         await passwordHashWithSalt(body.password, new Uint8Array([43, 198, 17, 94, 211, 8, 72, 161, 5, 99, 177, 32, 247, 66, 14, 151]));
         return authError("login_failed", 401, origin);
       }
+      if (user.email && !user.email_verified_at) return authError("email_not_verified", 403, origin);
       if (!await verifyPassword(body.password, user.password_hash)) return authError("login_failed", 401, origin);
-      await env.DB.prepare("DELETE FROM auth_rate_limits WHERE rate_key = ?").bind(await hashInstallId(`login:${username}:${ip}`)).run();
+      await env.DB.prepare("DELETE FROM auth_rate_limits WHERE rate_key = ?").bind(await hashInstallId(`login:${login.value}:${ip}`)).run();
       return issueSession(env, user, origin);
+    }
+
+    if (request.method === "POST" && url.pathname === "/v1/auth/forgot-password") {
+      const body = await readJson(request);
+      const email = normalizeEmail(body?.email);
+      if (!email) return authError("invalid_email", 400, origin);
+      if (!env.EMAIL || !env.EMAIL_FROM) return authError("email_service_unavailable", 503, origin);
+      const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
+      const now = Math.floor(Date.now() / 1000);
+      if (!await rateLimit(env, `reset:${email}:${ip}`, 3, now)) return authError("rate_limited", 429, origin);
+      const user = await env.DB.prepare("SELECT id, email FROM users WHERE email = ? COLLATE NOCASE AND email_verified_at IS NOT NULL")
+        .bind(email).first<{ id: string; email: string }>();
+      if (user) await emailToken(env, user.id, user.email, "password_reset", url.origin);
+      return responseJson({ requested: true }, 200, origin);
+    }
+
+    if (request.method === "POST" && url.pathname === "/v1/auth/email") {
+      const user = await authenticatedUser(env, request);
+      if (!user) return authError("unauthorized", 401, origin);
+      const body = await readJson(request);
+      const email = normalizeEmail(body?.email);
+      if (!email) return authError("invalid_email", 400, origin);
+      if (!env.EMAIL || !env.EMAIL_FROM) return authError("email_service_unavailable", 503, origin);
+      const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
+      const now = Math.floor(Date.now() / 1000);
+      if (!await rateLimit(env, `verify-email:${user.user_id}:${ip}`, 3, now)) return authError("rate_limited", 429, origin);
+      const existing = await env.DB.prepare("SELECT id FROM users WHERE email = ? COLLATE NOCASE AND id != ?")
+        .bind(email, user.user_id).first<{ id: string }>();
+      if (existing) return authError("email_unavailable", 409, origin);
+      const verified = await env.DB.prepare("SELECT email, email_verified_at FROM users WHERE id = ?").bind(user.user_id).first<{ email: string | null; email_verified_at: number | null }>();
+      if (verified?.email?.toLowerCase() === email && verified.email_verified_at) return responseJson({ alreadyVerified: true }, 200, origin);
+      if (!await emailToken(env, user.user_id, email, "email_verify", url.origin)) return authError("email_delivery_failed", 503, origin);
+      return responseJson({ verificationRequired: true }, 202, origin);
     }
 
     if (request.method === "GET" && url.pathname === "/v1/auth/me") {
       const user = await authenticatedUser(env, request);
       if (!user) return authError("unauthorized", 401, origin);
-      const profile = await env.DB.prepare("SELECT username, profile_description, favorite_music, avatar_data, username_changed_at FROM users WHERE id = ?")
-        .bind(user.user_id).first<ProfileRow>();
-      return profile ? responseJson(publicProfile(profile), 200, origin) : authError("unauthorized", 401, origin);
+      const profile = await env.DB.prepare("SELECT username, profile_description, favorite_music, avatar_data, username_changed_at, email, email_verified_at FROM users WHERE id = ?")
+        .bind(user.user_id).first<ProfileRow & { email: string | null; email_verified_at: number | null }>();
+      return profile ? responseJson(privateProfile(profile), 200, origin) : authError("unauthorized", 401, origin);
     }
 
     if (request.method === "PUT" && url.pathname === "/v1/profile/me") {
@@ -389,9 +562,9 @@ export default {
       } catch {
         return authError("account_name_unavailable", 409, origin);
       }
-      const updated = await env.DB.prepare("SELECT username, profile_description, favorite_music, avatar_data, username_changed_at FROM users WHERE id = ?")
-        .bind(user.user_id).first<ProfileRow>();
-      return updated ? responseJson(publicProfile(updated), 200, origin) : authError("profile_update_failed", 500, origin);
+      const updated = await env.DB.prepare("SELECT username, profile_description, favorite_music, avatar_data, username_changed_at, email, email_verified_at FROM users WHERE id = ?")
+        .bind(user.user_id).first<ProfileRow & { email: string | null; email_verified_at: number | null }>();
+      return updated ? responseJson(privateProfile(updated), 200, origin) : authError("profile_update_failed", 500, origin);
     }
 
     if (request.method === "GET" && url.pathname.startsWith("/v1/profiles/")) {
