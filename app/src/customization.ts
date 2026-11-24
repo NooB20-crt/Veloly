@@ -1,6 +1,8 @@
 import { DEFAULT_CUSTOMIZATION, type Customization } from "./api";
 import { setBrandColors } from "./theme";
 
+const CUSTOMIZATION_CACHE_KEY = "veloly.customization.v1";
+
 /** Choisit noir ou blanc selon le contraste WCAG le plus élevé sur cette couleur. */
 function readableForeground(hex: string): string {
   const channels = [1, 3, 5].map((offset) => {
@@ -29,4 +31,18 @@ export function applyCustomization(value?: Partial<Customization> | null) {
   root.setProperty("--on-violet-light", readableForeground(secondary));
   root.setProperty("--accent", "var(--violet-light)");
   setBrandColors(primary, secondary);
+  // Apply the last known palette before the native settings request finishes on next launch.
+  try {
+    localStorage.setItem(CUSTOMIZATION_CACHE_KEY, JSON.stringify({ primaryColor: primary, secondaryColor: secondary }));
+  } catch {
+    // The native settings file remains the source of truth if WebView storage is unavailable.
+  }
+}
+
+// Restore the cached palette synchronously. App startup then replaces it with native settings.
+try {
+  const cached = localStorage.getItem(CUSTOMIZATION_CACHE_KEY);
+  if (cached) applyCustomization(JSON.parse(cached) as Partial<Customization>);
+} catch {
+  // Invalid or unavailable cache: the defaults remain until native settings are loaded.
 }
