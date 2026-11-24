@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="app/public/logo.svg" width="110" alt="Veloly" />
+  <img src="app/public/icon.png" width="110" alt="Veloly" />
 </p>
 
 <h1 align="center">Veloly</h1>
