@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="LOGObanie.jpg" width="110" alt="Veloly" />
+  <img src="LOGObanie_edited.jpg" width="750" alt="Veloly" />
 </p>
 
 <h1 align="center">Veloly</h1>
