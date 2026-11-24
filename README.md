@@ -6,8 +6,8 @@
 
 <p align="center">
   A light, fast music player, written in Rust with Tauri.<br />
-  <a href="https://noob20-crt.github.io/Veloly/">Website</a> ·
-  <a href="https://github.com/NooB20-crt/Veloly/releases/latest">Download</a>
+  <a href="https://zyndrax707.github.io/Veloly/">Website</a> ·
+  <a href="https://github.com/zyndrax707/Veloly/releases/latest">Download</a>
 </p>
 
 <p align="center">
