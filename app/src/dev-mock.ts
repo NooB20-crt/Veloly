@@ -390,8 +390,8 @@ const handlers: Record<string, (args: any) => unknown> = {
   rename_playlist: ({ id, name }) => ((pl(id).name = String(name).trim() || pl(id).name), copy()),
   set_playlist_cover: ({ id, cover }) => ((pl(id).cover = (cover as string | null) || null), copy()),
   delete_playlist: ({ id }) => ((coll.playlists = coll.playlists.filter((p) => p.id !== id)), copy()),
-  add_to_playlist: ({ id, tracks: t }) => (pushUnique(pl(id).tracks, t), copy()),
-  remove_from_playlist: ({ id, trackId }) => ((pl(id).tracks = pl(id).tracks.filter((t) => t.id !== trackId)), copy()),
+  add_to_playlist: ({ id, tracks: t }) => (pl(id).tracks.push(...t), copy()),
+  remove_from_playlist: ({ id, index }) => (pl(id).tracks.splice(index, 1), copy()),
   move_in_playlist: ({ id, from, to }) => {
     const list = pl(id).tracks;
     const [t] = list.splice(from, 1);

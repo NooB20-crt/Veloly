@@ -6,6 +6,9 @@ app/src-tauri/gen/schemas/
 
 # Configuration locale (chemin de compilation propre à chaque machine)
 .cargo/
+app/.env.local
+telemetry/.dev.vars
+telemetry/.wrangler/
 
 # Divers
 *.log

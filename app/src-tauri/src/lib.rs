@@ -202,8 +202,8 @@ fn add_to_playlist(state: State<'_, AppState>, id: String, tracks: Vec<Track>) -
 }
 
 #[tauri::command]
-fn remove_from_playlist(state: State<'_, AppState>, id: String, track_id: String) -> Res<CollectionData> {
-    state.collection.remove_from_playlist(&id, &track_id)
+fn remove_from_playlist(state: State<'_, AppState>, id: String, index: usize) -> Res<CollectionData> {
+    state.collection.remove_from_playlist(&id, index)
 }
 
 #[tauri::command]

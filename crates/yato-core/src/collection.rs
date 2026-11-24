@@ -174,19 +174,21 @@ impl Collection {
         })
     }
 
-    /// Ajoute des morceaux à la fin (ceux déjà présents sont ignorés).
+    /// Ajoute les morceaux à la fin. Les occurrences répétées sont conservées.
     pub fn add_to_playlist(&self, id: &str, tracks: Vec<Track>) -> Result<CollectionData> {
         self.update(|d| {
             let i = index_of(d, id)?;
-            push_unique(&mut d.playlists[i].tracks, tracks);
+            d.playlists[i].tracks.extend(tracks);
             Ok(())
         })
     }
 
-    pub fn remove_from_playlist(&self, id: &str, track_id: &str) -> Result<CollectionData> {
+    pub fn remove_from_playlist(&self, id: &str, index: usize) -> Result<CollectionData> {
         self.update(|d| {
             let i = index_of(d, id)?;
-            d.playlists[i].tracks.retain(|t| t.id != track_id);
+            if index < d.playlists[i].tracks.len() {
+                d.playlists[i].tracks.remove(index);
+            }
             Ok(())
         })
     }
@@ -306,13 +308,13 @@ mod tests {
         assert_eq!(d.playlists[0].tracks.len(), 2);
         c.add_to_playlist(&id, vec![track("y"), track("z")]).unwrap();
         c.move_in_playlist(&id, 2, 0).unwrap();
-        c.remove_from_playlist(&id, "x").unwrap();
+        c.remove_from_playlist(&id, 1).unwrap();
         c.rename_playlist(&id, "Été".into()).unwrap();
 
         let d = Collection::load(&path).get();
         assert_eq!(d.liked.len(), 3);
         assert_eq!(d.playlists[0].name, "Été");
-        assert_eq!(d.playlists[0].tracks.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(), ["z", "y"]);
+        assert_eq!(d.playlists[0].tracks.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(), ["y", "y", "z"]);
         c.record_play(track("h1")).unwrap();
         c.record_play(track("h2")).unwrap();
         let d = c.record_play(track("h1")).unwrap();

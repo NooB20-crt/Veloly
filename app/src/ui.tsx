@@ -136,14 +136,20 @@ export function SourceTag(props: { source: string }) {
 export function TrackList(props: {
   tracks: Track[];
   current?: string;
+  /** Occurrence exacte du morceau en cours dans cette liste (les identifiants peuvent se répéter). */
+  currentIndex?: number;
   status: Snapshot["status"];
   onPlay: (index: number) => void;
   showAlbum?: boolean;
   showSource?: boolean;
   /** Texte de la colonne album, remplacée (ex. heure d'écoute dans l'historique). */
   aside?: (index: number) => string;
+  /** En-tête aligné sur la grille des morceaux (ex. commandes de tri d'une playlist). */
+  header?: JSX.Element;
   /** Liste affichée dans une playlist : menu « Retirer », et réordonnable si `onMove`. */
   playlist?: string;
+  /** Correspondance entre la ligne affichée et sa position dans la playlist source (tri visuel). */
+  sourceIndex?: (index: number) => number;
   onMove?: (from: number, to: number) => void;
 }) {
   // Glisser-déposer (playlists) : ligne déplacée, et ligne au-dessus de laquelle elle arrive.
@@ -196,9 +202,12 @@ export function TrackList(props: {
   };
   return (
     <div classList={{ tracklist: true, "with-album": !!props.showAlbum || !!props.aside }} role="list">
+      {props.header}
       <For each={props.tracks}>
         {(t, i) => {
-          const isCurrent = () => props.current === t.id;
+          const isCurrent = () => props.currentIndex !== undefined
+            ? props.currentIndex === i()
+            : props.current === t.id && props.tracks.findIndex((item) => item.id === t.id) === i();
           return (
             <div
               role="listitem"
@@ -228,7 +237,7 @@ export function TrackList(props: {
                 endDrag();
               }}
               onDragEnd={endDrag}
-              onContextMenu={(e) => openTrackMenu(e, [t], props.playlist)}
+              onContextMenu={(e) => openTrackMenu(e, [t], props.playlist, props.sourceIndex?.(i()) ?? i())}
               onDblClick={() => props.onPlay(i())}
               // Téléphone : un simple toucher lance le morceau (pas de double-clic au doigt).
               onClick={() => isMobile() && props.onPlay(i())}
@@ -277,7 +286,7 @@ export function TrackList(props: {
               </Show>
               <LikeButton track={t} class="row-like" />
               <div class="row-time">{formatTime(t.duration)}</div>
-              <button class="row-more" title={tr.moreOptions} onClick={(e) => openTrackMenu(e, [t], props.playlist)} onDblClick={(e) => e.stopPropagation()}>
+              <button class="row-more" title={tr.moreOptions} onClick={(e) => openTrackMenu(e, [t], props.playlist, props.sourceIndex?.(i()) ?? i())} onDblClick={(e) => e.stopPropagation()}>
                 <IconMore />
               </button>
               <Show when={props.onMove && isMobile()}>
@@ -508,7 +517,7 @@ export function TrackMenuHost(props: { onOpenPlaylist: (id: string) => void }) {
                 <IconQueue /> {tr.addToQueue}
               </button>
               <Show when={m().playlist && single()}>
-                <button class="menu-item" role="menuitem" onClick={act((m) => removeFromPlaylist(m.playlist!, m.tracks[0].id))}>
+                <button class="menu-item" role="menuitem" onClick={act((m) => removeFromPlaylist(m.playlist!, m.playlistIndex ?? 0))}>
                   <IconPlaylist size={18} /> {tr.removeFromThisPlaylist}
                 </button>
               </Show>

@@ -21,6 +21,7 @@ import { WelcomeDialog } from "./welcome";
 import { applyCustomization } from "./customization";
 import { userError } from "./error-message";
 import { offlineMode, setOfflineMode } from "./offline-mode";
+import { recordFirstLaunch } from "./telemetry";
 import { LikedView, PlaylistView } from "./playlist";
 import { Backdrop, NowPlaying, PlayerBar } from "./player";
 import { DiscoverView, discoverSections, listenDiscover, loadDiscover, refreshDiscover } from "./discover";
@@ -310,6 +311,7 @@ export default function App() {
   onMount(async () => {
     // Nettoyages enregistrés avant tout `await`, sinon Solid les perd.
     startFrames();
+    void recordFirstLaunch();
     const unlisten = api.onPlayer(applySnap);
     const unlistenDiscover = listenDiscover();
     api.ytdlpStatus().then(setYtdlp).catch(() => {});

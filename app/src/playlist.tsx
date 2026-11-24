@@ -12,6 +12,18 @@ type Common = { snap: Snapshot; onPlay: (tracks: Track[], index: number) => void
 
 const total = (tracks: Track[]) => tracks.reduce((a, t) => a + (t.duration ?? 0), 0);
 const countLabel = (n: number) => t.songsCount(n);
+type SortKey = "name" | "album" | "duration";
+type Sort = { key: SortKey; direction: 1 | -1 } | null;
+
+function currentOccurrence(tracks: Track[], snap: Snapshot): number | undefined {
+  if (!snap.track) return undefined;
+  // L'index du lecteur désigne aussi l'occurrence, y compris lorsque la playlist contient
+  // plusieurs fois le même identifiant. Si la file vient d'une autre liste, choisir la première.
+  const index = snap.index;
+  if (index !== null && index >= 0 && index < tracks.length && tracks[index]?.id === snap.track.id) return index;
+  const first = tracks.findIndex((track) => track.id === snap.track?.id);
+  return first < 0 ? undefined : first;
+}
 
 export function LikedView(props: Common) {
   const tracks = () => collection().liked;
@@ -56,6 +68,7 @@ export function LikedView(props: Common) {
 /** `editing` : la playlist vient d'être créée, son nom est prêt à être changé. */
 export function PlaylistView(props: Common & { id: string; editing: boolean; onDeleted: () => void }) {
   const playlist = () => playlistById(props.id);
+  const [sort, setSort] = createSignal<Sort>(null);
   const [editing, setEditing] = createSignal(false);
   const [confirmDelete, setConfirmDelete] = createSignal(false);
   createEffect(on(() => [props.id, props.editing] as const, ([, e]) => {
@@ -88,6 +101,44 @@ export function PlaylistView(props: Common & { id: string; editing: boolean; onD
     }
     if (await deletePlaylist(props.id)) props.onDeleted();
   };
+  const sortedEntries = () => {
+    const p = playlist();
+    if (!p) return [];
+    const selected = sort();
+    const entries = p.tracks.map((track, index) => ({ track, index }));
+    if (!selected) return entries;
+    const compare = selected.key === "name"
+      ? (a: Track, b: Track) => a.title.localeCompare(b.title, undefined, { sensitivity: "base", numeric: true })
+      : selected.key === "album"
+        ? (a: Track, b: Track) => (a.album ?? "").localeCompare(b.album ?? "", undefined, { sensitivity: "base", numeric: true }) || a.title.localeCompare(b.title, undefined, { sensitivity: "base", numeric: true })
+        : (a: Track, b: Track) => (a.duration ?? 0) - (b.duration ?? 0);
+    return entries.sort((a, b) => {
+      if (selected.key === "duration" && (a.track.duration === null || b.track.duration === null)) {
+        if (a.track.duration === null && b.track.duration !== null) return 1;
+        if (b.track.duration === null && a.track.duration !== null) return -1;
+      }
+      return selected.direction * compare(a.track, b.track) || a.index - b.index;
+    });
+  };
+  const sortedTracks = () => sortedEntries().map((entry) => entry.track);
+  const changeSort = (key: SortKey) => setSort((old) => old?.key === key
+    ? old.direction === 1 ? { key, direction: -1 } : null
+    : { key, direction: 1 });
+  const sortButton = (key: SortKey, label: string) => (
+    <button
+      type="button"
+      class="playlist-column-sort"
+      classList={{ active: sort()?.key === key }}
+      aria-label={`${label} — ${t.sortPlaylist}`}
+      aria-pressed={sort()?.key === key}
+      onClick={() => changeSort(key)}
+    >
+      {label}
+      <Show when={sort()?.key === key}>
+        <span class="playlist-sort-arrow" aria-hidden="true">{sort()!.direction === 1 ? "↑" : "↓"}</span>
+      </Show>
+    </button>
+  );
 
   return (
     <Show when={playlist()} fallback={<p class="muted empty">{t.playlistGone}</p>}>
@@ -181,13 +232,26 @@ export function PlaylistView(props: Common & { id: string; editing: boolean; onD
               }
             >
               <TrackList
-                tracks={p().tracks}
+                tracks={sortedTracks()}
                 current={props.snap.track?.id}
+                currentIndex={currentOccurrence(sortedTracks(), props.snap)}
                 status={props.snap.status}
-                onPlay={(i) => props.onPlay(p().tracks, i)}
+                onPlay={(i) => props.onPlay(sortedTracks(), i)}
                 showAlbum
                 playlist={p().id}
-                onMove={(from, to) => moveInPlaylist(p().id, from, to)}
+                header={
+                  <div class="row playlist-column-header" role="row" aria-label={t.sortPlaylist}>
+                    <div class="row-num" aria-hidden="true">#</div>
+                    <div class="playlist-cover-heading" aria-hidden="true" />
+                    <div class="row-main" role="columnheader">{sortButton("name", t.sortName)}</div>
+                    <div class="row-album" role="columnheader">{sortButton("album", t.sortAlbum)}</div>
+                    <div class="row-like playlist-empty-heading" aria-hidden="true" />
+                    <div class="row-time" role="columnheader">{sortButton("duration", t.sortDuration)}</div>
+                    <div class="row-more playlist-empty-heading" aria-hidden="true" />
+                  </div>
+                }
+                sourceIndex={(index) => sortedEntries()[index]?.index ?? index}
+                onMove={sort() ? undefined : (from, to) => moveInPlaylist(p().id, from, to)}
               />
             </Show>
           </section>

@@ -326,6 +326,15 @@ html[data-vt] .content { view-transition-name: page; }
 @keyframes fade-in { from { opacity: 0; } }
 
 .tracklist { display: flex; flex-direction: column; gap: 2px; }
+.playlist-column-header { margin: 0 0 4px; padding-top: 3px; padding-bottom: 9px; border-radius: 0; border-bottom: 1px solid var(--line); color: var(--text-3); animation: none; content-visibility: visible; contain: none; }
+.playlist-column-header:hover { background: transparent; }
+.playlist-column-header .row-num { color: var(--text-3); }
+.playlist-column-header .row-album, .playlist-column-header .row-time { overflow: visible; }
+.playlist-column-sort { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 0; color: var(--text-2); font-size: 12px; font-weight: 500; text-align: inherit; white-space: nowrap; }
+.playlist-column-sort:hover, .playlist-column-sort.active { color: var(--text); }
+.playlist-sort-arrow { color: var(--accent); font-size: 13px; line-height: 1; }
+.playlist-column-header .row-time .playlist-column-sort { justify-content: flex-end; }
+.playlist-empty-heading { visibility: hidden; pointer-events: none; }
 .row {
   display: grid; grid-template-columns: 34px 42px minmax(0, 1fr) 56px; align-items: center; gap: 14px;
   padding: 7px 14px 7px 8px; border-radius: var(--r-md); transition: background 0.25s var(--soft);
@@ -1160,6 +1169,9 @@ textarea.dialog-input.multi { height: 130px; white-space: pre; overflow: auto; f
   .row, .with-album .row { grid-template-columns: 48px minmax(0, 1fr) 40px; gap: 12px; padding: 6px 2px 6px 4px; }
   .row:has(.row-handle), .with-album .row:has(.row-handle) { grid-template-columns: 48px minmax(0, 1fr) 40px 36px; }
   .row-num, .row-like, .row-time, .row-album { display: none; }
+  .playlist-column-header .playlist-cover-heading, .playlist-column-header .playlist-empty-heading { display: none; }
+  .playlist-column-header .row-main { grid-column: 2; }
+  .playlist-column-sort { font-size: 12px; }
   .row .cover.sm { width: 48px; height: 48px; }
   .row-more { opacity: 1; width: 40px; height: 40px; }
   .row-handle { display: grid; place-items: center; width: 36px; height: 44px; color: var(--text-3); touch-action: none; cursor: grab; }

@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex, nofollow" />
+  <meta name="theme-color" content="#050014" />
+  <title>Veloly — Admin</title>
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml" />
+  <style>
+    :root { color-scheme: dark; font-family: Manrope, system-ui, sans-serif; background: #050014; color: #f4f4f7; --muted: #a3a5b8; --line: #ffffff20; --accent: #b33cff; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px; background: radial-gradient(ellipse at 50% 0%, #40115f 0, transparent 60%), #050014; }
+    main { width: min(560px, 100%); padding: 28px; border: 1px solid var(--line); border-radius: 22px; background: #100b1ddd; box-shadow: 0 28px 100px #0009; }
+    h1 { margin: 0 0 6px; font-size: 25px; } p { color: var(--muted); line-height: 1.5; }
+    form { display: grid; gap: 12px; margin-top: 24px; }
+    label { display: grid; gap: 6px; color: var(--muted); font-size: 13px; }
+    input { min-width: 0; height: 44px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; color: white; background: #ffffff0c; font: inherit; }
+    button { height: 44px; border: 0; border-radius: 999px; color: white; background: linear-gradient(135deg, #d064ff, #9718ed 65%, #5b00b8); font: inherit; font-weight: 700; cursor: pointer; }
+    #error { min-height: 1.5em; color: #ff9b9b; }
+    #stats { margin-top: 26px; }
+    .total { display: flex; align-items: baseline; gap: 12px; margin: 24px 0; }
+    .total strong { font-size: 56px; line-height: 1; }
+    .total span { color: var(--muted); }
+    h2 { margin-top: 28px; font-size: 16px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 11px 4px; border-bottom: 1px solid var(--line); text-align: left; }
+    th { color: var(--muted); font-size: 12px; font-weight: 600; }
+    td:last-child, th:last-child { text-align: right; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Statistiques Veloly</h1>
+    <p>Nombre d’installations ayant effectué leur premier lancement avec le comptage anonyme activé. Une installation est comptée une fois par profil local.</p>
+    <form id="login">
+      <label>Adresse du service de comptage
+        <input id="endpoint" type="url" placeholder="https://veloly-first-launch.<compte>.workers.dev" required autocomplete="url" />
+      </label>
+      <label>Clé administrateur
+        <input id="token" type="password" required autocomplete="current-password" />
+      </label>
+      <button>Voir le compteur</button>
+      <div id="error" role="alert"></div>
+    </form>
+    <section id="stats" hidden aria-live="polite">
+      <div class="total"><strong id="total">0</strong><span>premiers lancements</span></div>
+      <h2>30 derniers jours avec activité</h2>
+      <table><thead><tr><th>Date (UTC)</th><th>Nouvelles installations</th></tr></thead><tbody id="days"></tbody></table>
+    </section>
+  </main>
+  <script>
+    const form = document.getElementById("login");
+    const error = document.getElementById("error");
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      error.textContent = "";
+      document.getElementById("stats").hidden = true;
+      const endpoint = document.getElementById("endpoint").value.trim().replace(/\/$/, "");
+      const token = document.getElementById("token").value;
+      try {
+        const service = new URL(endpoint);
+        if (service.protocol !== "https:" || !service.hostname.endsWith(".workers.dev")) {
+          throw new Error("Saisis l’adresse HTTPS de ton Worker Cloudflare (.workers.dev).");
+        }
+        const response = await fetch(`${endpoint}/v1/admin/stats`, { headers: { Authorization: `Bearer ${token}` } });
+        if (response.status === 401) throw new Error("Clé administrateur incorrecte.");
+        if (!response.ok) throw new Error(`Le service a répondu avec le code ${response.status}.`);
+        const data = await response.json();
+        document.getElementById("total").textContent = Number(data.total).toLocaleString("fr-FR");
+        const days = document.getElementById("days");
+        days.replaceChildren();
+        for (const entry of data.recent) {
+          const row = document.createElement("tr");
+          const date = document.createElement("td");
+          const count = document.createElement("td");
+          date.textContent = entry.day;
+          count.textContent = Number(entry.count).toLocaleString("fr-FR");
+          row.append(date, count);
+          days.append(row);
+        }
+        document.getElementById("stats").hidden = false;
+      } catch (cause) {
+        error.textContent = cause instanceof Error ? cause.message : "Impossible de charger le compteur.";
+      }
+    });
+  </script>
+</body>
+</html>

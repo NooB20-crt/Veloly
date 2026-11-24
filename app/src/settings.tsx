@@ -12,6 +12,7 @@ import { IconClose, IconLink } from "./icons";
 import { lang, LANGUAGES, setLang, t, type Lang } from "./i18n";
 import { eventShortcut, resetShortcuts, setShortcut, shortcutLabel, shortcutMap, type ShortcutAction } from "./shortcuts";
 import { userError } from "./error-message";
+import { launchTelemetryAvailable, launchTelemetryEnabled, setLaunchTelemetryEnabled } from "./telemetry";
 
 /** Une ligne de réglage : intitulé, explication, et la commande à droite. */
 function Row(props: { title: string; hint?: string; children?: JSX.Element }) {
@@ -41,10 +42,12 @@ function Toggle(props: { on: boolean; label: string; onChange: (on: boolean) => 
 export function SettingsView(props: { onImport: () => void; onLibrary: () => void; onHistory: () => void }) {
   const [settings, setSettings] = createSignal<Settings | null>(null);
   const [version, setVersion] = createSignal("");
+  const [shareLaunchCount, setShareLaunchCount] = createSignal(false);
   const [listeningShortcut, setListeningShortcut] = createSignal<ShortcutAction | null>(null);
   let shortcutCapture: ((e: KeyboardEvent) => void) | undefined;
 
   onMount(async () => {
+    setShareLaunchCount(launchTelemetryEnabled());
     try {
       const loaded = await api.getSettings();
       setSettings(loaded);
@@ -167,6 +170,22 @@ export function SettingsView(props: { onImport: () => void; onLibrary: () => voi
                   onChange={(e) => updateCustomization({ secondaryColor: e.currentTarget.value })} />
               </Row>
             </section>
+
+            <Show when={launchTelemetryAvailable()}>
+              <section class="settings-group">
+                <h2 class="section-title">{t.privacy}</h2>
+                <Row title={t.launchStats} hint={t.launchStatsHint}>
+                  <Toggle
+                    on={shareLaunchCount()}
+                    label={t.launchStats}
+                    onChange={(enabled) => {
+                      setShareLaunchCount(enabled);
+                      setLaunchTelemetryEnabled(enabled);
+                    }}
+                  />
+                </Row>
+              </section>
+            </Show>
 
             <section class="settings-group">
               <h2 class="section-title">{t.playback}</h2>

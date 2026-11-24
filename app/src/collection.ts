@@ -162,7 +162,7 @@ export function imageToCover(file: File, size = 600): Promise<string> {
     img.src = url;
   });
 }
-export const removeFromPlaylist = (id: string, trackId: string) => apply(api.removeFromPlaylist(id, trackId));
+export const removeFromPlaylist = (id: string, index: number) => apply(api.removeFromPlaylist(id, index));
 export const moveInPlaylist = (id: string, from: number, to: number) => apply(api.moveInPlaylist(id, from, to));
 
 export async function addToPlaylist(id: string, tracks: Track[]) {
@@ -188,13 +188,13 @@ export async function enqueue(tracks: Track[], first: boolean) {
 
 // ---------- Menu d'un morceau (clic droit, bouton « ⋯ ») ----------
 /** `playlist` : la playlist affichée, pour proposer « Retirer de cette playlist ». */
-export type TrackMenu = { x: number; y: number; align: "left" | "right"; tracks: Track[]; playlist?: string };
+export type TrackMenu = { x: number; y: number; align: "left" | "right"; tracks: Track[]; playlist?: string; playlistIndex?: number };
 const [trackMenu, setTrackMenu] = createSignal<TrackMenu | null>(null);
 export { trackMenu };
 export const closeTrackMenu = () => setTrackMenu(null);
 
 /** Ouvre le menu sous le bouton cliqué, ou à la position de la souris (clic droit). */
-export function openTrackMenu(e: MouseEvent, tracks: Track[], playlist?: string) {
+export function openTrackMenu(e: MouseEvent, tracks: Track[], playlist?: string, playlistIndex?: number) {
   e.preventDefault();
   e.stopPropagation();
   const el = e.currentTarget as HTMLElement | null;
@@ -202,8 +202,8 @@ export function openTrackMenu(e: MouseEvent, tracks: Track[], playlist?: string)
   const r = fromButton ? el.getBoundingClientRect() : null;
   setTrackMenu(
     r
-      ? { x: r.right, y: r.bottom + 6, align: "right", tracks, playlist }
-      : { x: e.clientX, y: e.clientY, align: "left", tracks, playlist },
+      ? { x: r.right, y: r.bottom + 6, align: "right", tracks, playlist, playlistIndex }
+      : { x: e.clientX, y: e.clientY, align: "left", tracks, playlist, playlistIndex },
   );
 }
 
