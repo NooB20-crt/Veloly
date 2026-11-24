@@ -1,10 +1,11 @@
 // Pages de la collection : titres likés et playlists.
 import { createEffect, createSignal, on, Show } from "solid-js";
 import { api, formatTime, type Snapshot, type Track } from "./api";
+import { createPlaylistShareLink } from "./account";
 import {
   collection, deletePlaylist, imageToCover, moveInPlaylist, notify, openTrackMenu, playlistById, renamePlaylist, setPlaylistCover,
 } from "./collection";
-import { IconClose, IconEdit, IconHeart, IconImage, IconMore, IconPlay, IconPlaylist, IconTrash } from "./icons";
+import { IconClose, IconEdit, IconHeart, IconImage, IconLink, IconMore, IconPlay, IconPlaylist, IconTrash } from "./icons";
 import { PlaylistArt, TrackList } from "./ui";
 import { t } from "./i18n";
 
@@ -71,6 +72,8 @@ export function PlaylistView(props: Common & { id: string; editing: boolean; onD
   const [sort, setSort] = createSignal<Sort>(null);
   const [editing, setEditing] = createSignal(false);
   const [confirmDelete, setConfirmDelete] = createSignal(false);
+  const [sharing, setSharing] = createSignal(false);
+  const [shareUrl, setShareUrl] = createSignal("");
   createEffect(on(() => [props.id, props.editing] as const, ([, e]) => {
     setEditing(e);
     setConfirmDelete(false);
@@ -85,6 +88,32 @@ export function PlaylistView(props: Common & { id: string; editing: boolean; onD
     if (p && name.trim() && name.trim() !== p.name) renamePlaylist(p.id, name);
   };
   let picker: HTMLInputElement | undefined;
+  let shareInput: HTMLInputElement | undefined;
+  const share = async () => {
+    const p = playlist();
+    if (!p || sharing()) return;
+    if (!p.tracks.length) { notify(t.emptyPlaylistText, "error"); return; }
+    setSharing(true);
+    try {
+      const link = await createPlaylistShareLink(p.name, p.tracks);
+      if (link) setShareUrl(link);
+      else notify(t.shareSignIn);
+    } catch {
+      notify(t.shareFailed, "error");
+    } finally { setSharing(false); }
+  };
+  const copyShareUrl = async () => {
+    const value = shareUrl();
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      notify(t.shareCopied);
+    } catch {
+      shareInput?.focus();
+      shareInput?.select();
+      notify(t.shareCopyManual);
+    }
+  };
   const pickCover = async (file: File | undefined) => {
     if (!file) return;
     try {
@@ -143,6 +172,7 @@ export function PlaylistView(props: Common & { id: string; editing: boolean; onD
   return (
     <Show when={playlist()} fallback={<p class="muted empty">{t.playlistGone}</p>}>
       {(p) => (
+        <>
         <div class="album-page">
           <header class="artist-head album-head">
             <button class="pl-art-btn" title={t.changeCover} aria-label={t.changeCover} onClick={() => picker?.click()}>
@@ -212,6 +242,9 @@ export function PlaylistView(props: Common & { id: string; editing: boolean; onD
                   <button class="icon-btn" title={t.addWholePlaylist} onClick={(e) => openTrackMenu(e, p().tracks, p().id)}>
                     <IconMore />
                   </button>
+                  <button class="icon-btn" title={t.sharePlaylist} aria-label={t.sharePlaylist} disabled={sharing()} onClick={() => void share()}>
+                    <IconLink />
+                  </button>
                 </Show>
                 <button classList={{ ghost: confirmDelete(), "icon-btn": !confirmDelete(), danger: true }} title={t.deletePlaylist} onClick={remove}>
                   <IconTrash />
@@ -256,6 +289,17 @@ export function PlaylistView(props: Common & { id: string; editing: boolean; onD
             </Show>
           </section>
         </div>
+        <Show when={shareUrl()}>
+          <div class="dialog-layer share-playlist-layer" onMouseDown={(event) => event.target === event.currentTarget && setShareUrl("")}>
+            <section class="dialog share-playlist-dialog" role="dialog" aria-modal="true" aria-label={t.sharePlaylistTitle}>
+              <div class="dialog-head"><h2>{t.sharePlaylistTitle}</h2><button type="button" class="icon-btn" title={t.closeLabel} onClick={() => setShareUrl("")}><IconClose /></button></div>
+              <p class="muted small">{t.sharePlaylistHint}</p>
+              <input ref={shareInput} class="dialog-input share-playlist-url" readonly value={shareUrl()} onFocus={(event) => event.currentTarget.select()} />
+              <div class="dialog-actions"><button type="button" class="ghost" onClick={() => setShareUrl("")}>{t.closeLabel}</button><button type="button" class="primary" onClick={() => void copyShareUrl()}>{t.copyLink}</button></div>
+            </section>
+          </div>
+        </Show>
+        </>
       )}
     </Show>
   );

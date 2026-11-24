@@ -15,6 +15,8 @@ type UpdateInfo = {
 const [available, setAvailable] = createSignal<UpdateInfo | null>(null);
 const [installing, setInstalling] = createSignal(false);
 const [error, setError] = createSignal(false);
+const [checked, setChecked] = createSignal(false);
+const [checkingNow, setCheckingNow] = createSignal(false);
 let desktopUpdate: import("@tauri-apps/plugin-updater").Update | null = null;
 let checking = false;
 
@@ -29,24 +31,29 @@ function compareVersions(left: string, right: string) {
 }
 
 /** Checks the platform's update channel once at startup. */
-export async function checkForUpdates() {
+export async function checkForUpdates(force = false) {
   if (checking) return;
   checking = true;
+  setCheckingNow(true);
   setError(false);
+  if (force) setAvailable(null);
   try {
     const currentVersion = await getVersion();
     if (isAndroid || isIOS) {
       const response = await fetch("https://api.github.com/repos/zyndrax707/Veloly/releases/latest", {
         headers: { Accept: "application/vnd.github+json" },
       });
-      if (!response.ok) return;
+      if (!response.ok) throw new Error("release_check_failed");
       const release = await response.json() as {
         tag_name?: string;
         body?: string;
         assets?: { name?: string; browser_download_url?: string }[];
       };
       const version = (release.tag_name ?? "").replace(/^v/i, "");
-      if (!version || compareVersions(version, currentVersion) <= 0) return;
+      if (!version || compareVersions(version, currentVersion) <= 0) {
+        setChecked(true);
+        return;
+      }
       const assets = release.assets ?? [];
       if (isAndroid) {
         const apk = assets.find((asset) => /android.*\.apk$/i.test(asset.name ?? ""));
@@ -55,6 +62,11 @@ export async function checkForUpdates() {
         const source = assets.find((asset) => /sidestore\.json$/i.test(asset.name ?? ""));
         if (source?.browser_download_url) setAvailable({ version, notes: release.body ?? "", platform: "ios", url: `sidestore://source?url=${encodeURIComponent(source.browser_download_url)}` });
       }
+      const assetAvailable = isAndroid
+        ? assets.some((asset) => /android.*\.apk$/i.test(asset.name ?? ""))
+        : assets.some((asset) => /sidestore\.json$/i.test(asset.name ?? ""));
+      if (!assetAvailable) setError(true);
+      setChecked(true);
       return;
     }
 
@@ -64,10 +76,12 @@ export async function checkForUpdates() {
       desktopUpdate = update;
       setAvailable({ version: update.version, notes: update.body ?? "", platform: "desktop" });
     }
+    setChecked(true);
   } catch {
-    // Update checks are best-effort and never interrupt startup or playback.
+    setError(true);
   } finally {
     checking = false;
+    setCheckingNow(false);
   }
 }
 
@@ -110,5 +124,20 @@ export function UpdateCard() {
         </section>
       )}
     </Show>
+  );
+}
+
+export function UpdateSettings() {
+  return (
+    <div class="update-settings-control">
+      <Show when={available()} fallback={<span class="update-status" aria-live="polite">
+        {checkingNow() ? t.updateChecking : checked() && !error() ? t.updateUpToDate : error() ? t.updateCheckError : ""}
+      </span>}>
+        {(update) => <span class="update-status" aria-live="polite">{t.updateAvailableVersion(update().version)}</span>}
+      </Show>
+      <button class="ghost" onClick={() => void checkForUpdates(true)} disabled={checkingNow() || installing()}>
+        {checkingNow() ? t.updateChecking : t.checkUpdates}
+      </button>
+    </div>
   );
 }

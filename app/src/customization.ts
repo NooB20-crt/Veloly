@@ -1,5 +1,5 @@
 import { DEFAULT_CUSTOMIZATION, type Customization } from "./api";
-import { setBrandColors } from "./theme";
+import { generatedAccent, setBrandColors } from "./theme";
 
 const CUSTOMIZATION_CACHE_KEY = "veloly.customization.v1";
 
@@ -19,10 +19,9 @@ function readableForeground(hex: string): string {
 export function applyCustomization(value?: Partial<Customization> | null) {
   const customization = { ...DEFAULT_CUSTOMIZATION, ...value };
   if (!/^#[0-9a-f]{6}$/i.test(customization.primaryColor)) customization.primaryColor = DEFAULT_CUSTOMIZATION.primaryColor;
-  if (!/^#[0-9a-f]{6}$/i.test(customization.secondaryColor)) customization.secondaryColor = DEFAULT_CUSTOMIZATION.secondaryColor;
-
   const primary = customization.primaryColor.toLowerCase();
-  const secondary = customization.secondaryColor.toLowerCase();
+  // Secondary used to be user-editable. Ignore that legacy value and derive the accent.
+  const secondary = generatedAccent(primary);
   const root = document.documentElement.style;
   root.setProperty("--violet", primary);
   root.setProperty("--violet-deep", `color-mix(in srgb, ${primary} 68%, #000000)`);

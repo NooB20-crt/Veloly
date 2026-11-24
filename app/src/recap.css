@@ -12,7 +12,7 @@
 .recap-stage { position: absolute; inset: 0; cursor: pointer; }
 .recap-slide {
   position: absolute; inset: 0; z-index: 1; overflow: hidden; display: grid; place-items: center;
-  --c1: #bb40f7; --c2: #9718ed; --c3: #0a0310; --accent: #e3b4ff;
+  --c1: color-mix(in srgb, var(--violet-light) 78%, white); --c2: var(--violet); --c3: color-mix(in srgb, var(--violet-deep) 16%, #0a0310); --accent: color-mix(in srgb, var(--violet-light) 82%, white);
   background:
     radial-gradient(70% 60% at 15% 10%, color-mix(in srgb, var(--c1) 85%, transparent), transparent 70%),
     radial-gradient(60% 70% at 90% 100%, color-mix(in srgb, var(--c2) 70%, transparent), transparent 70%),
@@ -20,12 +20,12 @@
 }
 .recap-slide.leaving { pointer-events: none; }
 .recap-slide::after { content: ""; position: absolute; inset: 0; z-index: 3; background: var(--grain); background-size: 220px; opacity: 0.09; mix-blend-mode: overlay; pointer-events: none; }
-.theme-blue { --c1: #bb40f7; --c2: #9718ed; --c3: #0a0310; --accent: #e8c9ff; }
-.theme-night { --c1: #410064; --c2: #9718ed; --c3: #000; --accent: #d17aff; }
-.theme-coral { --c1: #bb40f7; --c2: #5600a7; --c3: #0a0310; --accent: #e3b4ff; }
-.theme-violet { --c1: #8b4dff; --c2: #2b1170; --c3: #07020f; --accent: #d3b8ff; }
-.theme-lime { --c1: #bb40f7; --c2: #5600a7; --c3: #0a0310; --accent: #e3b4ff; }
-.theme-cyan { --c1: #bb40f7; --c2: #5600a7; --c3: #0a0310; --accent: #e3b4ff; }
+.theme-blue { --c1: var(--violet-light); --c2: var(--violet); --c3: color-mix(in srgb, var(--violet-deep) 16%, #0a0310); --accent: color-mix(in srgb, var(--violet-light) 84%, white); }
+.theme-night { --c1: var(--violet-deep); --c2: var(--violet); --c3: #000; --accent: var(--violet-light); }
+.theme-coral { --c1: color-mix(in srgb, var(--violet-light) 68%, white); --c2: var(--violet-deep); --c3: color-mix(in srgb, var(--violet-deep) 16%, #0a0310); --accent: color-mix(in srgb, var(--violet-light) 82%, white); }
+.theme-violet { --c1: var(--violet-light); --c2: var(--violet-deep); --c3: color-mix(in srgb, var(--violet-deep) 14%, #07020f); --accent: color-mix(in srgb, var(--violet-light) 82%, white); }
+.theme-lime { --c1: color-mix(in srgb, var(--violet-light) 72%, white); --c2: var(--violet); --c3: color-mix(in srgb, var(--violet-deep) 18%, #0a0310); --accent: color-mix(in srgb, var(--violet-light) 84%, white); }
+.theme-cyan { --c1: var(--violet-light); --c2: var(--violet); --c3: color-mix(in srgb, var(--violet-deep) 18%, #0a0310); --accent: color-mix(in srgb, var(--violet-light) 84%, white); }
 
 /* Pochette en fond : immense, floue, qui dérive lentement. */
 .recap-art-bg {
@@ -152,9 +152,9 @@
   position: relative; overflow: hidden; width: min(470px, 46vw); padding: 26px; border-radius: 30px;
   display: flex; flex-direction: column; gap: 22px;
   background:
-    radial-gradient(90% 60% at 0% 0%, rgba(209, 122, 255, 0.7), transparent 60%),
-    linear-gradient(165deg, #9718ed, #5600a7 50%, #10031c);
-  box-shadow: 0 60px 120px -40px rgba(151, 24, 237, 0.7), inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+    radial-gradient(90% 60% at 0% 0%, color-mix(in srgb, var(--violet-light) 70%, transparent), transparent 60%),
+    linear-gradient(165deg, var(--violet), var(--violet-deep) 50%, #10031c);
+  box-shadow: 0 60px 120px -40px color-mix(in srgb, var(--violet) 70%, transparent), inset 0 0 0 1px rgba(255, 255, 255, 0.14);
   transform: rotate(-2deg);
 }
 .recap-poster::before { content: ""; position: absolute; inset: 0; background: var(--grain); background-size: 220px; opacity: 0.12; mix-blend-mode: overlay; pointer-events: none; }

@@ -461,10 +461,9 @@ export function NowPlaying(props: { snap: Snapshot; position: number; run: Run; 
               </div>
               <Progress snap={props.snap} position={props.position} run={props.run} />
               <Transport snap={props.snap} run={props.run} playing={props.snap.status === "playing"} big />
-              {/* Téléphone seulement (caché sur ordinateur) : paroles et volume. */}
               <div class="np-actions">
-                <QueueButton snap={props.snap} run={props.run} />
                 <Volume snap={props.snap} run={props.run} />
+                <QueueButton snap={props.snap} run={props.run} />
               </div>
             </div>
             <div class="np-right" id="np-lyrics">

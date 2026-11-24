@@ -76,5 +76,12 @@ export function setBrandColors(primary: string, secondary: string) {
   apply(primarySource, secondarySource);
 }
 
+/** Génère automatiquement une couleur d'accent claire à partir de la teinte principale. */
+export function generatedAccent(primary: string): string {
+  if (!/^#[0-9a-f]{6}$/i.test(primary)) return DEFAULT_SECONDARY;
+  const source = Hct.fromInt(argbFromHex(primary));
+  return hexFromArgb(Hct.from(source.hue, Math.max(32, source.chroma * 0.72), Math.min(88, Math.max(68, source.tone + 28))).toInt());
+}
+
 // Palette violette dès le démarrage.
 apply(primarySource, secondarySource);

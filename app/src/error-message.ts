@@ -9,6 +9,7 @@ export function userError(error: unknown): string {
   if (/network error|timed? out|dns|connection|connect|request failed|internet/.test(normalized)) return t.errorNetwork;
   if (/audio output|no output|device unavailable/.test(normalized)) return t.errorAudio;
   if (/file error|no such file|permission denied|cannot find the path/.test(normalized)) return t.errorFile;
+  if (/shared_playlist_not_found|invalid_shared_playlist/.test(normalized)) return t.shareLinkInvalid;
   if (/track not found|song not found|playlist not found|private playlist|unavailable/.test(normalized)) return t.errorUnavailable;
   return detail ? t.errorGeneric(detail) : t.errorTryAgain;
 }

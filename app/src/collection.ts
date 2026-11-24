@@ -3,6 +3,7 @@
 // renvoie la collection à jour, qui remplace celle-ci d'un bloc.
 import { createMemo, createSignal } from "solid-js";
 import { api, type Collection, type Playlist, type Track } from "./api";
+import { fetchSharedPlaylist } from "./account";
 import { t } from "./i18n";
 import { offlineMode } from "./offline-mode";
 import { userError } from "./error-message";
@@ -109,6 +110,47 @@ export const recentTracks = createMemo(() => {
 export async function importPlaylist(url: string, onProgress: (done: number, total: number) => void): Promise<string | null> {
   const stop = await api.onImportProgress(onProgress).catch(() => null);
   try {
+    const shared = await fetchSharedPlaylist(url);
+    if (shared) {
+      const resolved: Track[] = [];
+      let missing = 0;
+      const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+      for (let index = 0; index < shared.tracks.length; index++) {
+        const item = shared.tracks[index];
+        onProgress(index, shared.tracks.length);
+        if (item.source !== "metadata" && item.remoteId) {
+          resolved.push({
+            id: `${item.source}:${item.remoteId}`, source: item.source, title: item.title, artist: item.artist,
+            album: item.album, duration: item.duration, trackNumber: null, discNumber: null, artwork: null,
+            hasCover: false, location: { kind: "remote", remoteId: item.remoteId },
+          });
+          continue;
+        }
+        try {
+          const query = await api.search(`${item.title} ${item.artist}`);
+          const targetTitle = normalize(item.title);
+          const targetArtist = normalize(item.artist);
+          const match = query
+            .filter((track) => track.source !== "local" && track.location.kind === "remote")
+            .map((track) => {
+              const title = normalize(track.title);
+              const artist = normalize(track.artist);
+              const score = (title === targetTitle ? 5 : title.includes(targetTitle) || targetTitle.includes(title) ? 2 : 0)
+                + (artist === targetArtist ? 4 : artist.includes(targetArtist) || targetArtist.includes(artist) ? 2 : 0);
+              return { track, score };
+            })
+            .sort((a, b) => b.score - a.score)[0];
+          if (match && match.score >= 7) resolved.push(match.track);
+          else missing++;
+        } catch { missing++; }
+      }
+      onProgress(shared.tracks.length, shared.tracks.length);
+      if (resolved.length === 0) { notify(t.sharedPlaylistNoMatches, "error"); return null; }
+      const updated = await apply(api.createPlaylist(shared.name, resolved));
+      const playlist = updated?.playlists[updated.playlists.length - 1];
+      if (playlist) notify(t.sharedPlaylistImported(shared.name, resolved.length, missing));
+      return playlist?.id ?? null;
+    }
     const r = await api.importPlaylist(url);
     setCollection(r.collection);
     if (r.liked) {

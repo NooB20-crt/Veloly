@@ -2,6 +2,18 @@
 
 What's new in Veloly, version by version. The latest is at the top.
 
+## 0.4.65 — 2026-11-24
+
+### New
+
+- Add cloud accounts with public profiles, editable profile details, and shareable playlist links.
+- Add a color wheel, automatically derived accent colors, and a manual update check in Settings.
+
+### Fixes
+
+- Keep custom interface colors applied consistently across the app.
+- Improve the lyrics player controls and keep profile avatars perfectly round.
+
 ## 0.4.6 — 2026-11-24
 
 ### New

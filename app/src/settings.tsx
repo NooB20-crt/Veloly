@@ -12,7 +12,7 @@ import { IconClose, IconLink } from "./icons";
 import { lang, LANGUAGES, setLang, t, type Lang } from "./i18n";
 import { eventShortcut, resetShortcuts, setShortcut, shortcutLabel, shortcutMap, type ShortcutAction } from "./shortcuts";
 import { userError } from "./error-message";
-import { UpdateCard } from "./update-card";
+import { UpdateCard, UpdateSettings } from "./update-card";
 import { FeedbackDialog } from "./feedback";
 import { feedbackAvailable, launchTelemetryAvailable, launchTelemetryEnabled, setLaunchTelemetryEnabled } from "./telemetry";
 import { isAndroid, isIOS } from "./mobile";
@@ -200,17 +200,21 @@ export function SettingsView(props: { onImport: () => void; onLibrary: () => voi
             <section class="settings-group">
               <h2 class="section-title">{t.customization}</h2>
               <Row title={t.primaryColor} hint={t.primaryColorHint}>
-                <div class="actions">
-                  <input class="custom-color" type="color" value={s().customization?.primaryColor ?? DEFAULT_CUSTOMIZATION.primaryColor} aria-label={t.primaryColor}
-                    onInput={(e) => { const customization = { ...DEFAULT_CUSTOMIZATION, ...s().customization, primaryColor: e.currentTarget.value }; setSettings({ ...s(), customization }); applyCustomization(customization); }}
-                    onChange={(e) => updateCustomization({ primaryColor: e.currentTarget.value })} />
+                <div class="color-options" role="radiogroup" aria-label={t.primaryColor}>
+                  <For each={["#304ffe", "#8738e8", "#e91e63", "#ff781f", "#149b55", "#08a9d8", "#9e9e9e"]}>
+                    {(color) => (
+                      <button type="button" class="color-swatch" classList={{ selected: (s().customization?.primaryColor ?? DEFAULT_CUSTOMIZATION.primaryColor).toLowerCase() === color }}
+                        style={{ "--swatch": color }} role="radio" aria-checked={(s().customization?.primaryColor ?? DEFAULT_CUSTOMIZATION.primaryColor).toLowerCase() === color}
+                        aria-label={`${t.colorChoice} ${color}`} onClick={() => updateCustomization({ primaryColor: color })} />
+                    )}
+                  </For>
+                  <label class="color-wheel" classList={{ selected: !["#304ffe", "#8738e8", "#e91e63", "#ff781f", "#149b55", "#08a9d8", "#9e9e9e"].includes((s().customization?.primaryColor ?? DEFAULT_CUSTOMIZATION.primaryColor).toLowerCase()) }} title={t.customColor}>
+                    <input class="color-wheel-input" type="color" value={s().customization?.primaryColor ?? DEFAULT_CUSTOMIZATION.primaryColor} aria-label={t.customColor}
+                      onInput={(e) => { const customization = { ...DEFAULT_CUSTOMIZATION, ...s().customization, primaryColor: e.currentTarget.value }; setSettings({ ...s(), customization }); applyCustomization(customization); }}
+                      onChange={(e) => updateCustomization({ primaryColor: e.currentTarget.value })} />
+                  </label>
                   <button class="ghost custom-color-reset" onClick={() => updateCustomization(DEFAULT_CUSTOMIZATION)}>{t.resetColors}</button>
                 </div>
-              </Row>
-              <Row title={t.secondaryColor} hint={t.secondaryColorHint}>
-                <input class="custom-color" type="color" value={s().customization?.secondaryColor ?? DEFAULT_CUSTOMIZATION.secondaryColor} aria-label={t.secondaryColor}
-                  onInput={(e) => { const customization = { ...DEFAULT_CUSTOMIZATION, ...s().customization, secondaryColor: e.currentTarget.value }; setSettings({ ...s(), customization }); applyCustomization(customization); }}
-                  onChange={(e) => updateCustomization({ secondaryColor: e.currentTarget.value })} />
               </Row>
               <Row title={t.glowEffects} hint={t.glowEffectsHint}>
                 <Toggle on={glowEnabled()} label={t.glowEffects} onChange={changeGlow} />
@@ -336,7 +340,9 @@ export function SettingsView(props: { onImport: () => void; onLibrary: () => voi
 
             <section class="settings-group">
               <h2 class="section-title">Veloly</h2>
-              <Row title={t.version(version() || "-")} />
+              <Row title={t.version(version() || "-")}>
+                <UpdateSettings />
+              </Row>
               <Row title={t.replayTour} hint={t.replayTourHint}>
                 <button class="ghost" onClick={props.onReplayTour}>{t.replayTourButton}</button>
               </Row>
@@ -392,7 +398,7 @@ export function ImportDialog(props: { onClose: () => void; onDone: (id: string) 
           classList={{ multi: songLinks() > 1 }}
           rows={1}
           inputMode="url"
-          placeholder="https://open.spotify.com/playlist/…"
+          placeholder="https://…"
           value={url()}
           onInput={(e) => setUrl(e.currentTarget.value)}
           onKeyDown={(e) => {

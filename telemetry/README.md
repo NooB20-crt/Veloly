@@ -45,3 +45,16 @@ Then rebuild the app. `.env.local` is ignored by Git.
 Open `site/admin.html` on the published site, enter the Worker URL and `ADMIN_TOKEN`, then select **Voir le compteur**. The API requires the bearer token; the browser page is only a viewer and contains no admin secret.
 
 The counter cannot prove that a client is an authentic Veloly build: any public endpoint can be scripted. Treat it as an approximate count of installations that opted in. Cloudflare provides and operates the Worker/D1 infrastructure; review its current service and data-retention terms before enabling the endpoint.
+
+## Cloud accounts (username and password)
+
+Account registration and login are served by this Worker and use the same D1 database, with separate `users`, `auth_sessions`, and `auth_rate_limits` tables. Before deploying the account endpoints, apply the new migration from this folder:
+
+```powershell
+npx wrangler d1 migrations apply veloly-first-launch --remote
+npx wrangler deploy
+```
+
+Usernames are normalized to lowercase and restricted to 3–24 ASCII letters, digits, or underscores. Passwords must be 12–128 characters. Veloly derives a salted PBKDF2-HMAC-SHA-256 hash (100,000 iterations, the current Cloudflare Workers per-call limit); the password is never stored or returned. Session tokens are random, kept in app memory, hashed before storage, and expire after 30 days. Login and registration attempts are rate-limited; rate-limit keys are hashes of the username/IP input, not raw IP addresses. All SQL values use D1 prepared statements and `.bind()` parameters.
+
+The app does not persist the session token between app restarts. There is no email collection, password reset, account deletion, or playlist synchronization. Signed-in users can create public playlist snapshots; each share stores the playlist name and track metadata (never local file paths or audio), and anyone with the unguessable link can view the list. Apply migration `0005_shared_playlists.sql` before deploying the Worker with playlist sharing. Users must keep their password safe; account recovery cannot be performed at this stage.

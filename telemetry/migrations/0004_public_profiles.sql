@@ -1,0 +1,4 @@
+ALTER TABLE users ADD COLUMN profile_description TEXT NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN favorite_music TEXT NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN avatar_data TEXT;
+ALTER TABLE users ADD COLUMN username_changed_at INTEGER NOT NULL DEFAULT 0;
