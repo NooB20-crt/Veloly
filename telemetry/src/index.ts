@@ -5,6 +5,7 @@ interface Env {
 
 const allowedOrigins = new Set([
   "https://noob20-crt.github.io",
+  "https://zyndrax707.github.io",
   "tauri://localhost",
   "https://tauri.localhost",
   "http://tauri.localhost",
