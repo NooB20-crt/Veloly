@@ -2,6 +2,18 @@
 
 What's new in Veloly, version by version. The latest is at the top.
 
+## 0.4.6 — 2026-11-24
+
+### New
+
+- Add a setting to turn the interface glow effects on or off.
+
+### Fixes
+
+- Keep text and icons readable when a light custom accent color is selected, with a smooth palette transition.
+- Remove the preamp, balance and stereo-width sliders; old saved values are reset to neutral.
+- Restore collection backups from the iOS and Android file picker.
+
 ## 0.4.5 — 2026-11-24
 
 ### New

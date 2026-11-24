@@ -10,13 +10,23 @@ export { fx };
 
 let loaded = false;
 
+// These three controls are no longer exposed. Neutralize values kept by older profiles so
+// hidden settings cannot continue to alter playback after an upgrade.
+const visibleFx = (value?: Partial<FxSettings> | null): FxSettings => ({
+  ...FLAT_FX,
+  ...value,
+  preamp: 0,
+  balance: 0,
+  stereoWidth: 1,
+});
+
 /** Lit les réglages enregistrés (une seule fois). */
 export function loadFx() {
   if (loaded) return;
   loaded = true;
   api
     .getSettings()
-    .then((s) => setSignal({ ...FLAT_FX, ...s.fx }))
+    .then((s) => setSignal(visibleFx(s.fx)))
     .catch(() => (loaded = false));
 }
 
@@ -24,7 +34,7 @@ export function loadFx() {
 export async function refreshFx() {
   try {
     const settings = await api.getSettings();
-    setSignal({ ...FLAT_FX, ...settings.fx });
+    setSignal(visibleFx(settings.fx));
     loaded = true;
   } catch {
     loaded = false;
@@ -36,7 +46,7 @@ let dirty = false;
 
 /** Applique et enregistre. Pendant qu'on fait glisser un curseur, les écritures se regroupent. */
 export function setFx(next: FxSettings) {
-  setSignal(next);
+  setSignal(visibleFx(next));
   dirty = true;
   if (!writing) void flush();
 }

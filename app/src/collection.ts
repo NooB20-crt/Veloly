@@ -90,6 +90,11 @@ export async function importCollectionBackup(path: string) {
   if (c) notify(t.backupImported);
 }
 
+export async function importCollectionBackupData(data: string) {
+  const c = await apply(api.importCollectionData(data));
+  if (c) notify(t.backupImported);
+}
+
 /** Morceaux écoutés récemment, sans doublons, du plus récent au plus ancien. */
 export const recentTracks = createMemo(() => {
   const seen = new Set<string>();

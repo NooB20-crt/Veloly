@@ -172,6 +172,16 @@ fn import_collection(state: State<'_, AppState>, path: PathBuf) -> Res<Collectio
 }
 
 #[tauri::command]
+fn import_collection_data(state: State<'_, AppState>, data: String) -> Res<CollectionData> {
+    const MAX_BACKUP_BYTES: usize = 100 * 1024 * 1024;
+    if data.len() > MAX_BACKUP_BYTES {
+        return Err(Error::Other("collection backup is larger than 100 MiB".into()));
+    }
+    let collection: CollectionData = serde_json::from_str(&data).map_err(|e| Error::Other(e.to_string()))?;
+    state.collection.replace(collection)
+}
+
+#[tauri::command]
 fn toggle_like(state: State<'_, AppState>, track: Track) -> Res<CollectionData> {
     state.collection.toggle_like(track)
 }
@@ -954,6 +964,7 @@ pub fn run() {
             collection,
             export_collection,
             import_collection,
+            import_collection_data,
             toggle_like,
             create_playlist,
             rename_playlist,

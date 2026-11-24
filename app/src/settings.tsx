@@ -7,7 +7,7 @@ import { applyCustomization } from "./customization";
 import { EqPanel } from "./eq";
 import { fx, setFx } from "./fx-store";
 import { setVisualizerOn, visualizerOn } from "./visualizer";
-import { clearHistory, collection, exportCollectionBackup, importCollectionBackup, importPlaylist, notify } from "./collection";
+import { clearHistory, collection, exportCollectionBackup, importCollectionBackup, importCollectionBackupData, importPlaylist, notify } from "./collection";
 import { IconClose, IconLink } from "./icons";
 import { lang, LANGUAGES, setLang, t, type Lang } from "./i18n";
 import { eventShortcut, resetShortcuts, setShortcut, shortcutLabel, shortcutMap, type ShortcutAction } from "./shortcuts";
@@ -15,6 +15,7 @@ import { userError } from "./error-message";
 import { UpdateCard } from "./update-card";
 import { FeedbackDialog } from "./feedback";
 import { feedbackAvailable, launchTelemetryAvailable, launchTelemetryEnabled, setLaunchTelemetryEnabled } from "./telemetry";
+import { isAndroid, isIOS } from "./mobile";
 
 /** Une ligne de réglage : intitulé, explication, et la commande à droite. */
 function Row(props: { title: string; hint?: string; children?: JSX.Element }) {
@@ -41,15 +42,25 @@ function Toggle(props: { on: boolean; label: string; onChange: (on: boolean) => 
   );
 }
 
+function readGlowPreference() {
+  try {
+    return localStorage.getItem("veloly-glow-enabled") !== "false";
+  } catch {
+    return true;
+  }
+}
+
 export function SettingsView(props: { onImport: () => void; onLibrary: () => void; onHistory: () => void; onReplayTour: () => void }) {
   const [settings, setSettings] = createSignal<Settings | null>(null);
   const [version, setVersion] = createSignal("");
   const [shareLaunchCount, setShareLaunchCount] = createSignal(false);
+  const [glowEnabled, setGlowEnabled] = createSignal(readGlowPreference());
   const [feedbackOpen, setFeedbackOpen] = createSignal(false);
   const [listeningShortcut, setListeningShortcut] = createSignal<ShortcutAction | null>(null);
   let shortcutCapture: ((e: KeyboardEvent) => void) | undefined;
 
   onMount(async () => {
+    document.documentElement.classList.toggle("no-glow", !glowEnabled());
     setShareLaunchCount(launchTelemetryEnabled());
     try {
       const loaded = await api.getSettings();
@@ -86,6 +97,16 @@ export function SettingsView(props: { onImport: () => void; onLibrary: () => voi
 
   const crossfadeLabel = (s: number) => (s === 0 ? t.off : `${s} s`);
 
+  const changeGlow = (enabled: boolean) => {
+    setGlowEnabled(enabled);
+    document.documentElement.classList.toggle("no-glow", !enabled);
+    try {
+      localStorage.setItem("veloly-glow-enabled", String(enabled));
+    } catch {
+      // Le réglage reste actif pour cette session si le stockage local n'est pas disponible.
+    }
+  };
+
   const exportBackup = async () => {
     const path = await save({
       defaultPath: "veloly-backup.json",
@@ -95,6 +116,24 @@ export function SettingsView(props: { onImport: () => void; onLibrary: () => voi
   };
 
   const importBackup = async () => {
+    if (isAndroid || isIOS) {
+      // Sur mobile, laisser le sélecteur système fournir le contenu au WebView. Les chemins
+      // retournés par les fournisseurs iOS (Files/iCloud) ne sont pas toujours lisibles par std::fs.
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = ".json,application/json";
+      input.onchange = async () => {
+        const file = input.files?.[0];
+        if (!file || !window.confirm(t.backupReplaceConfirm)) return;
+        try {
+          await importCollectionBackupData(await file.text());
+        } catch (e) {
+          notify(userError(e), "error");
+        }
+      };
+      input.click();
+      return;
+    }
     const path = await open({
       multiple: false,
       filters: [{ name: "Veloly backup", extensions: ["json"] }],
@@ -172,6 +211,9 @@ export function SettingsView(props: { onImport: () => void; onLibrary: () => voi
                 <input class="custom-color" type="color" value={s().customization?.secondaryColor ?? DEFAULT_CUSTOMIZATION.secondaryColor} aria-label={t.secondaryColor}
                   onInput={(e) => { const customization = { ...DEFAULT_CUSTOMIZATION, ...s().customization, secondaryColor: e.currentTarget.value }; setSettings({ ...s(), customization }); applyCustomization(customization); }}
                   onChange={(e) => updateCustomization({ secondaryColor: e.currentTarget.value })} />
+              </Row>
+              <Row title={t.glowEffects} hint={t.glowEffectsHint}>
+                <Toggle on={glowEnabled()} label={t.glowEffects} onChange={changeGlow} />
               </Row>
             </section>
 

@@ -26,6 +26,11 @@
 @property --md-outline-variant { syntax: "<color>"; inherits: true; initial-value: #49454f; }
 @property --md-error-container { syntax: "<color>"; inherits: true; initial-value: #8c1d18; }
 @property --md-on-error-container { syntax: "<color>"; inherits: true; initial-value: #f9dedc; }
+@property --violet { syntax: "<color>"; inherits: true; initial-value: #9718ed; }
+@property --violet-deep { syntax: "<color>"; inherits: true; initial-value: #5600a7; }
+@property --violet-light { syntax: "<color>"; inherits: true; initial-value: #d17aff; }
+@property --on-violet { syntax: "<color>"; inherits: true; initial-value: #ffffff; }
+@property --on-violet-light { syntax: "<color>"; inherits: true; initial-value: #111018; }
 
 :root {
   /* Changement de morceau : toutes les couleurs glissent en même temps. */
@@ -34,12 +39,15 @@
     --md-secondary-container 0.9s, --md-on-secondary-container 0.9s, --md-tertiary 0.9s, --md-surface 0.9s,
     --md-surface-container-lowest 0.9s, --md-surface-container-low 0.9s, --md-surface-container 0.9s,
     --md-surface-container-high 0.9s, --md-surface-container-highest 0.9s, --md-on-surface 0.9s,
-    --md-on-surface-variant 0.9s, --md-outline-variant 0.9s, --md-error-container 0.9s, --md-on-error-container 0.9s;
+    --md-on-surface-variant 0.9s, --md-outline-variant 0.9s, --md-error-container 0.9s, --md-on-error-container 0.9s,
+    --violet 0.55s, --violet-deep 0.55s, --violet-light 0.55s, --on-violet 0.55s, --on-violet-light 0.55s;
 
   /* Brand: Veloly violet on black. */
   --violet: #9718ed;
   --violet-deep: #5600a7;
   --violet-light: #d17aff;
+  --on-violet: #fff;
+  --on-violet-light: #111018;
   --bg: #000;
   --panel: rgba(6, 6, 14, 0.7);
   --surface: rgba(255, 255, 255, 0.05);
@@ -529,8 +537,8 @@ html[data-vt] .content { view-transition-name: page; }
 .np-lyrics-toggle:hover { background: var(--surface-2); }
 .np-lyrics-toggle:active { transform: scale(0.96); }
 .np-lyrics-toggle svg { width: 18px; height: 18px; }
-.np-lyrics-toggle[aria-expanded="true"] { background: var(--violet); color: #fff; box-shadow: 0 0 24px -6px rgba(151, 24, 237, 0.9); }
-.np-lyrics-toggle[aria-expanded="true"]:hover { background: var(--violet-deep); }
+.np-lyrics-toggle[aria-expanded="true"] { background: var(--violet); color: var(--on-violet); box-shadow: 0 0 24px -6px color-mix(in srgb, var(--violet) 90%, transparent); }
+.np-lyrics-toggle[aria-expanded="true"]:hover { background: var(--violet); }
 .np-grid { height: 100%; display: grid; grid-template-columns: minmax(300px, 0.9fr) minmax(0, 1.1fr); gap: 72px; align-items: center; }
 .nowplaying:not(.lyrics-mode) .np-grid { grid-template-columns: minmax(0, 1fr); }
 .nowplaying:not(.lyrics-mode) .np-left { justify-self: center; }
@@ -1036,7 +1044,7 @@ textarea.dialog-input.multi { height: 130px; white-space: pre; overflow: auto; f
 /* Sidebar: quiet entries, the active one on a violet glass pill. */
 .nav { height: 42px; font-weight: 600; font-size: 14px; }
 .nav-pill { background: linear-gradient(100deg, rgba(151, 24, 237, 0.5), rgba(151, 24, 237, 0.12)); box-shadow: inset 0 0 0 1px rgba(209, 122, 255, 0.35); }
-.nav.active svg { color: #fff; }
+.nav.active svg { color: var(--on-violet); }
 .nav-count { font-size: 11px; }
 .nav-heading { font-size: 10px; letter-spacing: 0.16em; }
 .menu-label { letter-spacing: 0.16em; font-size: 10px; }
@@ -1058,8 +1066,8 @@ textarea.dialog-input.multi { height: 130px; white-space: pre; overflow: auto; f
 .empty-state h2, .dialog-head h2 { font-size: 18px; }
 
 /* Buttons: electric violet pill with white text; secondary is glass. */
-.primary { background: linear-gradient(135deg, #c251ff, var(--violet) 60%, var(--violet-deep)); color: #fff; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25); }
-.primary:hover:not(:disabled) { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 10px 40px -10px rgba(151, 24, 237, 0.9); }
+.primary { background: var(--violet); color: var(--on-violet); box-shadow: inset 0 1px 0 color-mix(in srgb, var(--on-violet) 22%, transparent); transition: background-color 0.25s var(--soft), color 0.25s var(--soft), box-shadow 0.25s var(--soft), transform 0.2s var(--soft); }
+.primary:hover:not(:disabled) { box-shadow: inset 0 1px 0 color-mix(in srgb, var(--on-violet) 22%, transparent), 0 10px 32px -12px color-mix(in srgb, var(--violet) 70%, transparent); }
 .primary, .ghost { font-weight: 700; letter-spacing: 0.01em; }
 .ghost { background: rgba(255, 255, 255, 0.05); }
 
@@ -1071,7 +1079,7 @@ textarea.dialog-input.multi { height: 130px; white-space: pre; overflow: auto; f
 .row.current { background: linear-gradient(90deg, color-mix(in srgb, var(--violet) 28%, transparent), color-mix(in srgb, var(--violet) 4%, transparent)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--violet-light) 25%, transparent); }
 .row.current .row-title { color: #fff; }
 .card.playing .card-art .cover { box-shadow: 0 0 0 2px var(--violet), 0 20px 50px -14px color-mix(in srgb, var(--violet) 80%, transparent); }
-.card-play, .play-btn { background: var(--violet); color: #fff; box-shadow: 0 10px 30px -8px color-mix(in srgb, var(--violet) 90%, transparent); }
+.card-play, .play-btn { background: var(--violet); color: var(--on-violet); box-shadow: 0 10px 30px -8px color-mix(in srgb, var(--violet) 75%, transparent); transition: background-color 0.25s var(--soft), color 0.25s var(--soft), box-shadow 0.25s var(--soft), transform 0.2s var(--soft); }
 .eq i { background: var(--violet-light); }
 
 /* Player: a dark glass bar with a violet glow. */
@@ -1092,18 +1100,18 @@ textarea.dialog-input.multi { height: 130px; white-space: pre; overflow: auto; f
 .np-bg::before { content: ""; position: absolute; inset: 0; z-index: 1; background: var(--grain); background-size: 220px; opacity: 0.08; mix-blend-mode: overlay; }
 
 /* Liked songs art: a violet gradient tile. */
-.pl-art.liked { color: #fff; background: linear-gradient(145deg, #bb40f7, var(--violet) 45%, #10051a); }
+.pl-art.liked { color: var(--on-violet); background: var(--violet); }
 
 /* Settings, dialogs, menus, toasts. */
 .setting { background: rgba(255, 255, 255, 0.035); }
 .switch.on { background: var(--violet); box-shadow: 0 0 20px -4px color-mix(in srgb, var(--violet) 90%, transparent); }
 .switch.on .switch-thumb { background: #fff; }
-.segmented button.on { background: var(--violet); color: #fff; }
+.segmented button.on { background: var(--violet); color: var(--on-violet); }
 .menu, .dialog { background: linear-gradient(160deg, rgba(48, 12, 72, 0.75), rgba(8, 8, 16, 0.85)); }
 .toast.info { background: rgba(38, 7, 60, 0.85); }
 .engine-bar div, .loader span { background: var(--violet-light); }
 .tag-youtube { background: rgba(255, 255, 255, 0.1); color: var(--text-2); }
-::selection { background: var(--violet); color: #fff; }
+::selection { background: var(--violet); color: var(--on-violet); }
 
 /* =========================================================================
    Player bar
@@ -1302,8 +1310,8 @@ textarea.dialog-input.multi { height: 130px; white-space: pre; overflow: auto; f
   .tab { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: var(--text-3); font-size: 11px; font-weight: 600; transition: color 0.25s; }
   .tab-icon { position: relative; display: grid; place-items: center; width: 58px; height: 30px; border-radius: var(--r-pill); transition: background 0.35s var(--soft), box-shadow 0.35s var(--soft); }
   .tab svg { width: 22px; height: 22px; }
-  .tab.active { color: #fff; }
-  .tab.active .tab-icon { background: linear-gradient(100deg, rgba(151, 24, 237, 0.6), rgba(151, 24, 237, 0.2)); box-shadow: inset 0 0 0 1px rgba(209, 122, 255, 0.35); }
+  .tab.active { color: var(--text); }
+  .tab.active .tab-icon { color: var(--on-violet); background: linear-gradient(100deg, color-mix(in srgb, var(--violet) 60%, transparent), color-mix(in srgb, var(--violet) 20%, transparent)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--violet-light) 35%, transparent); }
   .tab:active .tab-icon { transform: scale(0.92); }
   .tab-icon .nav-dot { position: absolute; top: 2px; right: 13px; margin: 0; }
   .tab-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 4px; }
@@ -1440,7 +1448,7 @@ textarea.dialog-input.multi { height: 130px; white-space: pre; overflow: auto; f
   background: var(--surface); box-shadow: inset 0 0 0 1px var(--surface-2); transition: background 0.2s, color 0.2s, box-shadow 0.2s;
 }
 .eq-chip:hover { color: var(--text); background: var(--surface-2); }
-.eq-chip.on { color: #fff; background: var(--violet); box-shadow: 0 6px 24px -8px var(--violet); }
+.eq-chip.on { color: var(--on-violet); background: var(--violet); box-shadow: 0 6px 24px -8px color-mix(in srgb, var(--violet) 75%, transparent); }
 
 .eq-graph {
   display: block; width: 100%; height: auto; border-radius: 14px; cursor: ns-resize; touch-action: none; user-select: none;
@@ -1552,3 +1560,33 @@ textarea.dialog-input.multi { height: 130px; white-space: pre; overflow: auto; f
   .np-actions { gap: 10px; }
   .np-actions .eq-pop { flex: none; }
 }
+
+/* User preference: remove accent glows while keeping ordinary outlines and depth shadows. */
+.no-glow .search:focus-within { box-shadow: var(--hairline), inset 0 0 0 1px var(--line) !important; }
+.no-glow .nav-progress { box-shadow: none !important; }
+.no-glow .engine-bar div,
+.no-glow .play-btn.playing,
+.no-glow .card-play,
+.no-glow .play-btn,
+.no-glow .np-lyrics-toggle[aria-expanded="true"],
+.no-glow .seek-played,
+.no-glow .bar.top,
+.no-glow .slider::-webkit-slider-thumb,
+.no-glow .slider::-moz-range-thumb,
+.no-glow .nav-dot,
+.no-glow .eq-chip.on,
+.no-glow .recap-bars .bar.top,
+.no-glow .welcome-tour-mark,
+.no-glow .tour-preview-nav button.active,
+.no-glow .tour-player-art,
+.no-glow .tour-floating-note { box-shadow: none !important; }
+.no-glow .primary:hover:not(:disabled) { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25) !important; }
+.no-glow .card.playing .card-art .cover { box-shadow: 0 20px 36px -18px rgba(0, 0, 0, 0.7) !important; }
+.no-glow .switch.on { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--violet) 45%, transparent) !important; }
+.no-glow .brand:hover img,
+.no-glow .eq-curve,
+.no-glow .clock-bar.fav { filter: none !important; }
+.no-glow .recap-huge,
+.no-glow .recap-number { text-shadow: none !important; }
+.no-glow .recap-glow { display: none !important; }
+.no-glow .welcome-tour-art { background: linear-gradient(135deg, rgba(255,255,255,.035), rgba(255,255,255,.008)) !important; }

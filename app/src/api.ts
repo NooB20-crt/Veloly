@@ -384,6 +384,7 @@ export const api = {
   collection: () => invoke<Collection>("collection"),
   exportCollection: (path: string) => invoke<void>("export_collection", { path }),
   importCollection: (path: string) => invoke<Collection>("import_collection", { path }),
+  importCollectionData: (data: string) => invoke<Collection>("import_collection_data", { data }),
   toggleLike: (track: Track) => invoke<Collection>("toggle_like", { track }),
   createPlaylist: (name: string, tracks?: Track[]) => invoke<Collection>("create_playlist", { name, tracks: tracks ?? null }),
   renamePlaylist: (id: string, name: string) => invoke<Collection>("rename_playlist", { id, name }),

@@ -239,33 +239,6 @@ export function EqPanel() {
       <EqGraph />
       <p class="eq-hint">{t.eqHint}</p>
       <FxRange
-        label={t.preamp}
-        min={-12}
-        max={12}
-        step={0.5}
-        value={fx().preamp}
-        text={`${fx().preamp > 0 ? "+" : ""}${fx().preamp.toFixed(1)} dB`}
-        onInput={(v) => patchFx({ preamp: v })}
-      />
-      <FxRange
-        label={t.balance}
-        min={-100}
-        max={100}
-        step={1}
-        value={Math.round(fx().balance * 100)}
-        text={fx().balance === 0 ? t.centered : fx().balance < 0 ? `${t.left} ${Math.abs(Math.round(fx().balance * 100))}%` : `${t.right} ${Math.round(fx().balance * 100)}%`}
-        onInput={(v) => patchFx({ balance: v / 100 })}
-      />
-      <FxRange
-        label={t.stereoWidth}
-        min={0}
-        max={200}
-        step={5}
-        value={Math.round(fx().stereoWidth * 100)}
-        text={fx().stereoWidth === 1 ? t.original : `${Math.round(fx().stereoWidth * 100)}%`}
-        onInput={(v) => patchFx({ stereoWidth: v / 100 })}
-      />
-      <FxRange
         label={t.radioEffect}
         min={0}
         max={100}

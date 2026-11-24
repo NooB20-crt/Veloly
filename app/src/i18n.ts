@@ -354,6 +354,8 @@ const en = {
   primaryColorHint: "Changes the main accent color throughout the app.",
   secondaryColorHint: "Used for supporting accents and highlights.",
   resetColors: "Reset colors",
+  glowEffects: "Glow effects",
+  glowEffectsHint: "Turn off the luminous halos around buttons and active elements.",
   language: "Language",
   languageHint: "Language of the interface.",
 
@@ -794,6 +796,8 @@ const fr: Dict = {
   primaryColorHint: "Modifie la couleur principale dans toute l'application.",
   secondaryColorHint: "Utilisée pour les accents et les reflets.",
   resetColors: "Réinitialiser les couleurs",
+  glowEffects: "Effets lumineux",
+  glowEffectsHint: "Désactive les halos lumineux autour des boutons et des éléments actifs.",
   language: "Langue",
   languageHint: "Langue de l'interface.",
 
