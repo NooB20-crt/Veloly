@@ -3,7 +3,7 @@
 // renvoie la collection à jour, qui remplace celle-ci d'un bloc.
 import { createMemo, createSignal } from "solid-js";
 import { api, type Collection, type Playlist, type Track } from "./api";
-import { fetchSharedPlaylist } from "./account";
+import { fetchSharedPlaylist } from "./playlist-share";
 import { t } from "./i18n";
 import { offlineMode } from "./offline-mode";
 import { userError } from "./error-message";

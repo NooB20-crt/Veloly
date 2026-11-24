@@ -1,7 +1,7 @@
 // Pages de la collection : titres likés et playlists.
 import { createEffect, createSignal, on, Show } from "solid-js";
 import { api, formatTime, type Snapshot, type Track } from "./api";
-import { createPlaylistShareLink } from "./account";
+import { createPlaylistShareLink } from "./playlist-share";
 import {
   collection, deletePlaylist, imageToCover, moveInPlaylist, notify, openTrackMenu, playlistById, renamePlaylist, setPlaylistCover,
 } from "./collection";
@@ -96,8 +96,7 @@ export function PlaylistView(props: Common & { id: string; editing: boolean; onD
     setSharing(true);
     try {
       const link = await createPlaylistShareLink(p.name, p.tracks);
-      if (link) setShareUrl(link);
-      else notify(t.shareSignIn);
+      setShareUrl(link);
     } catch {
       notify(t.shareFailed, "error");
     } finally { setSharing(false); }

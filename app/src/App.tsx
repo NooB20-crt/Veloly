@@ -27,7 +27,6 @@ import { LikedView, PlaylistView } from "./playlist";
 import { Backdrop, NowPlaying, PlayerBar } from "./player";
 import { DiscoverView, discoverSections, listenDiscover, loadDiscover, refreshDiscover } from "./discover";
 import { AlbumLink, ArtistLinks, Carousel, cancelHover, Cover, Empty, hoverPrefetch, Loader, PlaylistArt, SourceTag, TrackCard, TrackList, TrackMenuHost, YtDlpBadge } from "./ui";
-import { ProfileEntry, ProfileHost } from "./account";
 
 /** `hub` : page « Ta musique » du téléphone (bibliothèque, likes, playlists, historique, stats). */
 type View = "discover" | "library" | "liked" | "history" | "stats" | "playlist" | "settings" | "search" | "artist" | "album" | "hub";
@@ -582,7 +581,6 @@ export default function App() {
           </div>
         </Show>
         <UpdateCard />
-        <ProfileEntry class="sidebar-profile-entry" />
         <button classList={{ nav: true, "nav-settings": true, active: view() === "settings" }} title={t.settings} onClick={() => goTo("settings")}>
           <IconSettings />
           <span>{t.settings}</span>
@@ -623,7 +621,6 @@ export default function App() {
               <RecentSearches active={recentActive()} onPick={pickRecent} onHover={setRecentActive} />
             </Show>
           </div>
-          <ProfileEntry class="mobile-profile-entry" />
         </header>
         <section class="content" ref={content}>
           <div class="page">
@@ -847,7 +844,6 @@ export default function App() {
 
       <PlayerBar snap={snap()} position={position()} run={run} onExpand={() => setNowPlaying(!expanded())} expanded={expanded()} />
 
-      <ProfileHost />
 
       <TabBar active={tab()} dot={recapHighlighted()} onSelect={selectTab} />
 

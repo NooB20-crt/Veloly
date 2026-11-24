@@ -2,6 +2,14 @@
 
 What's new in Veloly, version by version. The latest is at the top.
 
+## 0.4.66 — 2026-11-24
+
+### Changes
+
+- Remove account sign-in and public profiles.
+- Keep playlist sharing and importing available without an account.
+- Preserve existing playlist links and rate-limit anonymous link creation.
+
 ## 0.4.65 — 2026-11-24
 
 ### New

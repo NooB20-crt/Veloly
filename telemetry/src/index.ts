@@ -2,22 +2,9 @@ interface Env {
   DB: D1Database;
   ADMIN_TOKEN?: string;
   DISCORD_FEEDBACK_WEBHOOK_URL?: string;
-  EMAIL?: { send(message: { to: string; from: string; subject: string; text: string; html?: string }): Promise<{ messageId: string }> };
-  EMAIL_FROM?: string;
 }
 
-// Cloudflare Workers currently caps PBKDF2 at 100,000 iterations per deriveBits call.
-const PASSWORD_ITERATIONS = 100_000;
-const SESSION_SECONDS = 30 * 24 * 60 * 60;
-const AUTH_WINDOW_SECONDS = 15 * 60;
-const EMAIL_VERIFY_SECONDS = 24 * 60 * 60;
-const PASSWORD_RESET_SECONDS = 30 * 60;
-
-interface UserRow { id: string; username: string; password_hash: string; email: string | null; email_verified_at: number | null }
-interface SessionRow { user_id: string; username: string; expires_at: number }
-interface ProfileRow { username: string; profile_description: string; favorite_music: string; avatar_data: string | null; username_changed_at: number }
-interface EmailTokenRow { user_id: string; email: string; purpose: "email_verify" | "password_reset"; expires_at: number }
-const USERNAME_COOLDOWN_SECONDS = 7 * 24 * 60 * 60;
+const RATE_WINDOW_SECONDS = 15 * 60;
 
 const allowedOrigins = new Set([
   "https://noob20-crt.github.io",
@@ -58,167 +45,8 @@ async function hashInstallId(id: string): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function base64Url(bytes: Uint8Array): string {
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-}
-
-function fromBase64Url(value: string): Uint8Array {
-  const padded = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
-  return Uint8Array.from(atob(padded), (char) => char.charCodeAt(0));
-}
-
-async function passwordHash(password: string, salt = crypto.getRandomValues(new Uint8Array(16))): Promise<string> {
-  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
-  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations: PASSWORD_ITERATIONS }, key, 256);
-  return `pbkdf2-sha256$${PASSWORD_ITERATIONS}$${base64Url(salt)}$${base64Url(new Uint8Array(bits))}`;
-}
-
-async function verifyPassword(password: string, stored: string): Promise<boolean> {
-  const [algorithm, rounds, saltText, expectedText, extra] = stored.split("$");
-  if (algorithm !== "pbkdf2-sha256" || rounds !== String(PASSWORD_ITERATIONS) || !saltText || !expectedText || extra !== undefined) return false;
-  const actual = await passwordHashWithSalt(password, fromBase64Url(saltText));
-  const expected = fromBase64Url(expectedText);
-  if (actual.length !== expected.length) return false;
-  let difference = 0;
-  for (let i = 0; i < actual.length; i++) difference |= actual[i] ^ expected[i];
-  return difference === 0;
-}
-
-async function passwordHashWithSalt(password: string, salt: Uint8Array): Promise<Uint8Array> {
-  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
-  return new Uint8Array(await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations: PASSWORD_ITERATIONS }, key, 256));
-}
-
-async function sessionTokenHash(token: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
-  return base64Url(new Uint8Array(digest));
-}
-
-function secureToken(): string {
-  return base64Url(crypto.getRandomValues(new Uint8Array(32)));
-}
-
-function normalizeUsername(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const username = value.trim().toLowerCase();
-  return /^[a-z0-9_]{3,24}$/.test(username) ? username : null;
-}
-
-function normalizeEmail(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const email = value.trim().toLowerCase();
-  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return null;
-  return email;
-}
-
-function normalizeLogin(value: unknown): { kind: "email" | "username"; value: string } | null {
-  if (typeof value !== "string") return null;
-  const email = normalizeEmail(value);
-  if (email) return { kind: "email", value: email };
-  const username = normalizeUsername(value);
-  return username ? { kind: "username", value: username } : null;
-}
-
-function authPage(title: string, message: string, form = ""): Response {
-  const html = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>${escapeHtml(title)} · Veloly</title><style>
-    :root{color-scheme:dark;font-family:system-ui,sans-serif;background:#080510;color:#f5f3fa}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:20px;background:radial-gradient(ellipse at 50% 0%,#35104d 0,transparent 58%),#080510}.card{width:min(480px,100%);padding:26px;border:1px solid #ffffff20;border-radius:22px;background:#120d1bef;box-shadow:0 28px 90px #0009}h1{margin:0 0 12px;font-size:23px}p{color:#c3bacd;line-height:1.55}label{display:grid;gap:7px;margin-top:14px;color:#d5ccdf;font-size:13px}input{width:100%;height:44px;padding:0 12px;border:1px solid #ffffff26;border-radius:10px;background:#ffffff0c;color:#fff;font:inherit}button,a{display:inline-flex;justify-content:center;align-items:center;min-height:42px;margin-top:16px;padding:0 18px;border:0;border-radius:999px;background:#9424dc;color:white;text-decoration:none;font:700 14px system-ui;cursor:pointer}
-  </style></head><body><main class="card"><h1>${escapeHtml(title)}</h1><p>${escapeHtml(message)}</p>${form}</main></body></html>`;
-  return new Response(html, { status: 200, headers: {
-    "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
-    "Referrer-Policy": "no-referrer", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
-  } });
-}
-
-async function emailToken(env: Env, userId: string, email: string, purpose: EmailTokenRow["purpose"], baseUrl: string): Promise<boolean> {
-  if (!env.EMAIL || !env.EMAIL_FROM) return false;
-  const token = secureToken();
-  const tokenHash = await sessionTokenHash(token);
-  const now = Math.floor(Date.now() / 1000);
-  const lifetime = purpose === "email_verify" ? EMAIL_VERIFY_SECONDS : PASSWORD_RESET_SECONDS;
-  const path = purpose === "email_verify" ? "/verify-email" : "/reset-password";
-  const link = new URL(path, baseUrl);
-  link.searchParams.set("token", token);
-  await env.DB.prepare("DELETE FROM auth_email_tokens WHERE user_id = ? AND purpose = ?").bind(userId, purpose).run();
-  await env.DB.prepare("DELETE FROM auth_email_tokens WHERE expires_at <= ?").bind(now).run();
-  await env.DB.prepare("INSERT INTO auth_email_tokens (token_hash, user_id, email, purpose, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-    .bind(tokenHash, userId, email, purpose, now + lifetime, now).run();
-  const title = purpose === "email_verify" ? "Confirme ton adresse e-mail Veloly" : "Réinitialise ton mot de passe Veloly";
-  const instruction = purpose === "email_verify"
-    ? "Confirme ton adresse e-mail pour activer ton compte Veloly."
-    : "Une demande de réinitialisation a été faite pour ton compte Veloly. Si tu n'en es pas à l'origine, ignore ce message.";
-  const expiry = purpose === "email_verify" ? "Ce lien expire dans 24 heures." : "Ce lien expire dans 30 minutes et ne peut être utilisé qu'une fois.";
-  const safeLink = escapeHtml(link.toString());
-  try {
-    await env.EMAIL.send({
-      to: email,
-      from: env.EMAIL_FROM,
-      subject: title,
-      text: `${instruction}\n\n${link}\n\n${expiry}`,
-      html: `<p>${escapeHtml(instruction)}</p><p><a href="${safeLink}">Continuer sur Veloly</a></p><p>${escapeHtml(expiry)}</p>`,
-    });
-    return true;
-  } catch {
-    await env.DB.prepare("DELETE FROM auth_email_tokens WHERE token_hash = ?").bind(tokenHash).run();
-    return false;
-  }
-}
-
-function validPassword(value: unknown): value is string {
-  return typeof value === "string" && Array.from(value).length >= 12 && Array.from(value).length <= 128 && new TextEncoder().encode(value).length <= 512;
-}
-
-function validProfileText(value: unknown, max: number): value is string {
-  return typeof value === "string" && Array.from(value).length <= max && !/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(value);
-}
-
-function validAvatar(value: unknown): value is string | null {
-  if (value === null) return true;
-  if (typeof value !== "string" || value.length > 100_000 || !/^data:image\/webp;base64,[A-Za-z0-9+/]+={0,2}$/.test(value)) return false;
-  try {
-    const bytes = atob(value.slice("data:image/webp;base64,".length));
-    return bytes.length <= 72_000 && bytes.slice(0, 4) === "RIFF" && bytes.slice(8, 12) === "WEBP";
-  } catch {
-    return false;
-  }
-}
-
-function publicProfile(row: ProfileRow) {
-  return {
-    username: row.username,
-    description: row.profile_description,
-    favoriteMusic: row.favorite_music,
-    avatarData: row.avatar_data,
-    usernameChangeAvailableAt: row.username_changed_at ? (row.username_changed_at + USERNAME_COOLDOWN_SECONDS) * 1000 : 0,
-  };
-}
-
-function privateProfile(row: ProfileRow & { email: string | null; email_verified_at: number | null }) {
-  return { ...publicProfile(row), email: row.email, emailVerified: !!row.email_verified_at };
-}
-
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]!);
-}
-
-function publicProfilePage(row: ProfileRow): Response {
-  const username = escapeHtml(row.username);
-  const description = escapeHtml(row.profile_description || "Profil Veloly");
-  const favorite = escapeHtml(row.favorite_music || "—");
-  const avatar = row.avatar_data && validAvatar(row.avatar_data)
-    ? `<img class="avatar" src="${row.avatar_data}" alt="Photo de ${username}">`
-    : `<div class="avatar empty" aria-label="Photo de profil par défaut"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="3.5"/><path d="M4.8 20a7.2 7.2 0 0 1 14.4 0"/></svg></div>`;
-  const html = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#080510"><title>${username} · Veloly</title><style>
-    :root{color-scheme:dark;font-family:Manrope,system-ui,-apple-system,"Segoe UI",sans-serif;background:#080510;color:#f5f3fa}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(ellipse at 50% 0%,#28113a 0,transparent 55%),#080510}main{width:min(520px,100%);padding:30px;border:1px solid #ffffff1c;border-radius:26px;background:#120d1bef;box-shadow:0 28px 90px #0009;text-align:center}.avatar{width:116px;height:116px;margin:0 auto 20px;border-radius:50%;object-fit:cover;background:#777;box-shadow:0 0 0 4px #ffffff16}.empty{display:grid;place-items:center;color:#ddd}.empty svg{width:52px;height:52px;stroke:currentColor;stroke-width:1.5}h1{margin:0;font-size:27px;overflow-wrap:anywhere}p{margin:10px 0;color:#bbb6c7;line-height:1.6;overflow-wrap:anywhere}.favorite{margin-top:20px;padding:14px 16px;border-radius:16px;background:#ffffff0c;text-align:left}.favorite small{display:block;margin-bottom:5px;color:#988fa4;font-size:11px;letter-spacing:.12em;text-transform:uppercase}.favorite strong{font-weight:600}a{display:inline-flex;margin-top:24px;padding:10px 18px;border-radius:999px;background:#8a20df;color:white;text-decoration:none;font-weight:700}
-  </style></head><body><main>${avatar}<h1>${username}</h1><p>${description}</p><div class="favorite"><small>Musique préférée</small><strong>${favorite}</strong></div><a href="https://zyndrax707.github.io/Veloly/">Découvrir Veloly</a></main></body></html>`;
-  return new Response(html, { status: 200, headers: {
-    "Content-Type": "text/html; charset=utf-8",
-    "Cache-Control": "no-store",
-    "X-Content-Type-Options": "nosniff",
-    "Referrer-Policy": "no-referrer",
-    "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; frame-ancestors 'none'",
-  } });
 }
 
 async function readJson(request: Request, maxBytes = 2_048): Promise<Record<string, unknown> | null> {
@@ -257,7 +85,7 @@ interface SharedTrack { source: "deezer" | "youtube" | "jamendo" | "metadata"; r
 interface SharedPlaylistRow { share_id: string; owner_id: string; playlist_name: string; tracks_json: string; created_at: number; username: string }
 
 async function findSharedPlaylist(env: Env, id: string): Promise<{ row: SharedPlaylistRow; tracks: SharedTrack[] } | null> {
-  const row = await env.DB.prepare("SELECT shared_playlists.share_id, shared_playlists.owner_id, shared_playlists.playlist_name, shared_playlists.tracks_json, shared_playlists.created_at, users.username FROM shared_playlists JOIN users ON users.id = shared_playlists.owner_id WHERE shared_playlists.share_id = ?")
+  const row = await env.DB.prepare("SELECT shared_playlists.share_id, shared_playlists.owner_id, shared_playlists.playlist_name, shared_playlists.tracks_json, shared_playlists.created_at, COALESCE(users.username, 'Veloly') AS username FROM shared_playlists LEFT JOIN users ON users.id = shared_playlists.owner_id WHERE shared_playlists.share_id = ?")
     .bind(id).first<SharedPlaylistRow>();
   if (!row) return null;
   try {
@@ -266,44 +94,18 @@ async function findSharedPlaylist(env: Env, id: string): Promise<{ row: SharedPl
   } catch { return null; }
 }
 
-function authError(code: string, status: number, origin: string | null) {
+function apiError(code: string, status: number, origin: string | null) {
   return responseJson({ error: code }, status, origin);
-}
-
-function bearerToken(request: Request): string | null {
-  const authorization = request.headers.get("Authorization") ?? "";
-  const match = /^Bearer ([A-Za-z0-9_-]{40,60})$/.exec(authorization);
-  return match?.[1] ?? null;
 }
 
 async function rateLimit(env: Env, key: string, maxAttempts: number, now: number): Promise<boolean> {
   const rateKey = await hashInstallId(key);
   await env.DB.prepare(
     "INSERT INTO auth_rate_limits (rate_key, window_started, attempts) VALUES (?, ?, 1) ON CONFLICT(rate_key) DO UPDATE SET attempts = CASE WHEN auth_rate_limits.window_started <= ? THEN 1 ELSE auth_rate_limits.attempts + 1 END, window_started = CASE WHEN auth_rate_limits.window_started <= ? THEN excluded.window_started ELSE auth_rate_limits.window_started END",
-  ).bind(rateKey, now, now - AUTH_WINDOW_SECONDS, now - AUTH_WINDOW_SECONDS).run();
+  ).bind(rateKey, now, now - RATE_WINDOW_SECONDS, now - RATE_WINDOW_SECONDS).run();
   const current = await env.DB.prepare("SELECT attempts FROM auth_rate_limits WHERE rate_key = ?")
     .bind(rateKey).first<{ attempts: number }>();
   return (current?.attempts ?? maxAttempts + 1) <= maxAttempts;
-}
-
-async function issueSession(env: Env, user: UserRow, origin: string | null): Promise<Response> {
-  const token = secureToken();
-  const now = Math.floor(Date.now() / 1000);
-  const tokenHash = await sessionTokenHash(token);
-  await env.DB.prepare("DELETE FROM auth_sessions WHERE expires_at <= ?").bind(now).run();
-  await env.DB.prepare("INSERT INTO auth_sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)")
-    .bind(tokenHash, user.id, now + SESSION_SECONDS).run();
-  return responseJson({ token, username: user.username, expiresAt: now + SESSION_SECONDS }, 200, origin);
-}
-
-async function authenticatedUser(env: Env, request: Request): Promise<SessionRow | null> {
-  const token = bearerToken(request);
-  if (!token) return null;
-  const tokenHash = await sessionTokenHash(token);
-  const now = Math.floor(Date.now() / 1000);
-  return await env.DB.prepare(
-    "SELECT auth_sessions.user_id, users.username, auth_sessions.expires_at FROM auth_sessions JOIN users ON users.id = auth_sessions.user_id WHERE auth_sessions.token_hash = ? AND auth_sessions.expires_at > ?",
-  ).bind(tokenHash, now).first<SessionRow>();
 }
 
 export default {
@@ -326,69 +128,19 @@ export default {
       });
     }
 
-    if (request.method === "GET" && (url.pathname === "/verify-email" || url.pathname === "/reset-password")) {
-      const token = url.searchParams.get("token") ?? "";
-      if (!/^[A-Za-z0-9_-]{40,60}$/.test(token)) return authPage("Lien invalide", "Ce lien est invalide ou a expiré. Recommence depuis Veloly.");
-      const purpose = url.pathname === "/verify-email" ? "email_verify" : "password_reset";
-      const tokenHash = await sessionTokenHash(token);
-      const now = Math.floor(Date.now() / 1000);
-      const found = await env.DB.prepare("SELECT user_id, email, purpose, expires_at FROM auth_email_tokens WHERE token_hash = ? AND purpose = ? AND expires_at > ?")
-        .bind(tokenHash, purpose, now).first<EmailTokenRow>();
-      if (!found) return authPage("Lien expiré", "Ce lien n'est plus valide. Retourne dans Veloly pour demander un nouveau lien.");
-      if (purpose === "email_verify") {
-        return authPage("Confirme ton adresse e-mail", "Appuie sur le bouton pour confirmer l'adresse et activer ton compte Veloly.",
-          `<form method="post" action="/v1/auth/verify-email"><input type="hidden" name="token" value="${token}"><button type="submit">Confirmer mon adresse</button></form>`);
-      }
-      return authPage("Réinitialise ton mot de passe", "Choisis un nouveau mot de passe. Il doit contenir entre 12 et 128 caractères.",
-        `<form method="post" action="/v1/auth/reset-password"><input type="hidden" name="token" value="${token}"><label>Nouveau mot de passe<input type="password" name="password" minlength="12" maxlength="128" autocomplete="new-password" required></label><label>Confirmer le mot de passe<input type="password" name="confirmation" minlength="12" maxlength="128" autocomplete="new-password" required></label><button type="submit">Enregistrer le nouveau mot de passe</button></form>`);
-    }
-
-    if (request.method === "POST" && (url.pathname === "/v1/auth/verify-email" || url.pathname === "/v1/auth/reset-password")) {
-      const form = await request.formData().catch(() => null);
-      const token = form?.get("token");
-      if (typeof token !== "string" || !/^[A-Za-z0-9_-]{40,60}$/.test(token)) return authPage("Lien invalide", "Ce lien est invalide ou a expiré. Recommence depuis Veloly.");
-      const tokenHash = await sessionTokenHash(token);
-      const now = Math.floor(Date.now() / 1000);
-      const purpose = url.pathname.endsWith("verify-email") ? "email_verify" : "password_reset";
-      const found = await env.DB.prepare("SELECT user_id, email, purpose, expires_at FROM auth_email_tokens WHERE token_hash = ? AND purpose = ? AND expires_at > ?")
-        .bind(tokenHash, purpose, now).first<EmailTokenRow>();
-      if (!found) return authPage("Lien expiré", "Ce lien a déjà été utilisé ou n'est plus valide. Demande-en un nouveau depuis Veloly.");
-      if (purpose === "email_verify") {
-        try {
-          await env.DB.prepare("UPDATE users SET email = ?, email_verified_at = ? WHERE id = ?").bind(found.email, now, found.user_id).run();
-        } catch {
-          await env.DB.prepare("DELETE FROM auth_email_tokens WHERE token_hash = ?").bind(tokenHash).run();
-          return authPage("Adresse déjà utilisée", "Cette adresse e-mail est déjà associée à un autre compte Veloly.");
-        }
-        await env.DB.prepare("DELETE FROM auth_email_tokens WHERE user_id = ? AND purpose = 'email_verify'").bind(found.user_id).run();
-        return authPage("Adresse confirmée", "Ton adresse e-mail est confirmée. Retourne dans Veloly pour te connecter avec ton pseudo ou ton e-mail.");
-      }
-      const password = form?.get("password");
-      const confirmation = form?.get("confirmation");
-      if (!validPassword(password) || password !== confirmation) {
-        return authPage("Mot de passe invalide", "Les mots de passe doivent correspondre et contenir entre 12 et 128 caractères. Recharge le lien pour réessayer.");
-      }
-      const hashed = await passwordHash(password);
-      await env.DB.prepare("UPDATE users SET password_hash = ? WHERE id = ?").bind(hashed, found.user_id).run();
-      await env.DB.prepare("DELETE FROM auth_email_tokens WHERE user_id = ? AND purpose = 'password_reset'").bind(found.user_id).run();
-      await env.DB.prepare("DELETE FROM auth_sessions WHERE user_id = ?").bind(found.user_id).run();
-      return authPage("Mot de passe modifié", "Ton mot de passe a été réinitialisé. Retourne dans Veloly et connecte-toi avec ton nouveau mot de passe.");
-    }
-
     if (request.method === "POST" && url.pathname === "/v1/shared-playlists") {
-      const user = await authenticatedUser(env, request);
-      if (!user) return authError("unauthorized", 401, origin);
       const now = Math.floor(Date.now() / 1000);
-      if (!await rateLimit(env, `share:${user.user_id}`, 12, now)) return authError("rate_limited", 429, origin);
+      const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
+      if (!await rateLimit(env, `share:${ip}`, 12, now)) return apiError("rate_limited", 429, origin);
       const body = await readJson(request, 180_000);
       const name = typeof body?.name === "string" ? body.name.trim() : "";
       const inputTracks = body?.tracks;
       if (!name || Array.from(name).length > 120 || !Array.isArray(inputTracks) || inputTracks.length < 1 || inputTracks.length > 300) {
-        return authError("invalid_shared_playlist", 400, origin);
+        return apiError("invalid_shared_playlist", 400, origin);
       }
       const tracks: SharedTrack[] = [];
       for (const item of inputTracks) {
-        if (typeof item !== "object" || item === null) return authError("invalid_shared_playlist", 400, origin);
+        if (typeof item !== "object" || item === null) return apiError("invalid_shared_playlist", 400, origin);
         const track = item as Record<string, unknown>;
         const title = typeof track.title === "string" ? track.title.trim() : "";
         const artist = typeof track.artist === "string" ? track.artist.trim() : "";
@@ -397,21 +149,21 @@ export default {
         const remoteId = typeof track.remoteId === "string" ? track.remoteId.trim() : null;
         const duration = typeof track.duration === "number" && Number.isFinite(track.duration) && track.duration >= 0 && track.duration <= 86_400 ? track.duration : null;
         if (!title || !artist || Array.from(title).length > 300 || Array.from(artist).length > 300 || (album !== null && Array.from(album).length > 300)) {
-          return authError("invalid_shared_playlist", 400, origin);
+          return apiError("invalid_shared_playlist", 400, origin);
         }
         const canUseRemoteId = (source === "deezer" || source === "youtube" || source === "jamendo") && remoteId !== null && remoteId.length <= 200;
         tracks.push({ source: canUseRemoteId ? source : "metadata", remoteId: canUseRemoteId ? remoteId : null, title, artist, album: album || null, duration });
       }
       const id = shareId();
       await env.DB.prepare("INSERT INTO shared_playlists (share_id, owner_id, playlist_name, tracks_json, created_at) VALUES (?, ?, ?, ?, ?)")
-        .bind(id, user.user_id, name, JSON.stringify(tracks), now).run();
+        .bind(id, "anonymous", name, JSON.stringify(tracks), now).run();
       return responseJson({ url: new URL(`/s/${playlistSlug(name)}-${id}`, url.origin).toString() }, 201, origin);
     }
 
     const sharedApi = /^\/v1\/shared-playlists\/([a-f0-9]{24})$/.exec(url.pathname);
     if (request.method === "GET" && sharedApi) {
       const shared = await findSharedPlaylist(env, sharedApi[1]);
-      if (!shared) return authError("shared_playlist_not_found", 404, origin);
+      if (!shared) return apiError("shared_playlist_not_found", 404, origin);
       return responseJson({ name: shared.row.playlist_name, owner: shared.row.username, tracks: shared.tracks }, 200, origin);
     }
 
@@ -423,174 +175,6 @@ export default {
       const shared = await findSharedPlaylist(env, id);
       if (!shared) return new Response("Cette playlist n'existe plus.", { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8" } });
       return sharedPlaylistPage(shared.row.playlist_name, shared.row.username, shared.tracks);
-    }
-
-    if (request.method === "POST" && url.pathname === "/v1/auth/register") {
-      const body = await readJson(request);
-      if (!body) return authError("invalid_request", 400, origin);
-      const username = normalizeUsername(body.username);
-      if (!username) return authError("invalid_username", 400, origin);
-      const email = normalizeEmail(body.email);
-      if (!email) return authError("invalid_email", 400, origin);
-      if (!validPassword(body.password)) return authError("weak_password", 400, origin);
-      if (!env.EMAIL || !env.EMAIL_FROM) return authError("email_service_unavailable", 503, origin);
-      const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
-      const now = Math.floor(Date.now() / 1000);
-      if (!await rateLimit(env, `register:${ip}`, 5, now)) return authError("rate_limited", 429, origin);
-
-      // Every account gets a random salt and a deliberately expensive PBKDF2 hash;
-      // the password itself is never written to D1 or returned to the client.
-      const user: UserRow = { id: crypto.randomUUID(), username, password_hash: await passwordHash(body.password), email, email_verified_at: null };
-      try {
-        await env.DB.prepare("INSERT INTO users (id, username, password_hash, created_at, username_changed_at, email) VALUES (?, ?, ?, ?, ?, ?)")
-          .bind(user.id, user.username, user.password_hash, now, now, email).run();
-      } catch {
-        // Allow the owner of a still-pending registration to request its confirmation email again.
-        const pending = await env.DB.prepare("SELECT id, username, password_hash, email, email_verified_at FROM users WHERE username = ? OR email = ? COLLATE NOCASE")
-          .bind(username, email).first<UserRow>();
-        if (pending && pending.username === username && !pending.email_verified_at && await verifyPassword(body.password, pending.password_hash)) {
-          const anotherOwner = await env.DB.prepare("SELECT id FROM users WHERE email = ? COLLATE NOCASE AND id != ?").bind(email, pending.id).first<{ id: string }>();
-          if (anotherOwner) return authError("account_name_unavailable", 409, origin);
-          try {
-            await env.DB.prepare("UPDATE users SET email = ? WHERE id = ? AND email_verified_at IS NULL").bind(email, pending.id).run();
-          } catch {
-            return authError("account_name_unavailable", 409, origin);
-          }
-          if (!await emailToken(env, pending.id, email, "email_verify", url.origin)) return authError("email_delivery_failed", 503, origin);
-          return responseJson({ verificationRequired: true }, 202, origin);
-        }
-        // Keep the response generic; only the account owner needs to know whether creation succeeded.
-        return authError("account_name_unavailable", 409, origin);
-      }
-      if (!await emailToken(env, user.id, email, "email_verify", url.origin)) {
-        await env.DB.prepare("DELETE FROM users WHERE id = ?").bind(user.id).run();
-        return authError("email_delivery_failed", 503, origin);
-      }
-      await env.DB.prepare("DELETE FROM auth_rate_limits WHERE rate_key = ?").bind(await hashInstallId(`register:${ip}`)).run();
-      return responseJson({ verificationRequired: true }, 202, origin);
-    }
-
-    if (request.method === "POST" && url.pathname === "/v1/auth/login") {
-      const body = await readJson(request);
-      if (!body) return authError("invalid_request", 400, origin);
-      const login = normalizeLogin(body.login ?? body.username);
-      if (!login || typeof body.password !== "string" || body.password.length > 128) return authError("login_failed", 401, origin);
-      const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
-      const now = Math.floor(Date.now() / 1000);
-      if (!await rateLimit(env, `login:${login.value}:${ip}`, 8, now)) return authError("rate_limited", 429, origin);
-      const user = login.kind === "email"
-        ? await env.DB.prepare("SELECT id, username, password_hash, email, email_verified_at FROM users WHERE email = ? COLLATE NOCASE").bind(login.value).first<UserRow>()
-        : await env.DB.prepare("SELECT id, username, password_hash, email, email_verified_at FROM users WHERE username = ?").bind(login.value).first<UserRow>();
-      if (!user) {
-        // Spend comparable password-hash work so unknown names do not get a fast response.
-        await passwordHashWithSalt(body.password, new Uint8Array([43, 198, 17, 94, 211, 8, 72, 161, 5, 99, 177, 32, 247, 66, 14, 151]));
-        return authError("login_failed", 401, origin);
-      }
-      if (user.email && !user.email_verified_at) return authError("email_not_verified", 403, origin);
-      if (!await verifyPassword(body.password, user.password_hash)) return authError("login_failed", 401, origin);
-      await env.DB.prepare("DELETE FROM auth_rate_limits WHERE rate_key = ?").bind(await hashInstallId(`login:${login.value}:${ip}`)).run();
-      return issueSession(env, user, origin);
-    }
-
-    if (request.method === "POST" && url.pathname === "/v1/auth/forgot-password") {
-      const body = await readJson(request);
-      const email = normalizeEmail(body?.email);
-      if (!email) return authError("invalid_email", 400, origin);
-      if (!env.EMAIL || !env.EMAIL_FROM) return authError("email_service_unavailable", 503, origin);
-      const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
-      const now = Math.floor(Date.now() / 1000);
-      if (!await rateLimit(env, `reset:${email}:${ip}`, 3, now)) return authError("rate_limited", 429, origin);
-      const user = await env.DB.prepare("SELECT id, email FROM users WHERE email = ? COLLATE NOCASE AND email_verified_at IS NOT NULL")
-        .bind(email).first<{ id: string; email: string }>();
-      if (user) await emailToken(env, user.id, user.email, "password_reset", url.origin);
-      return responseJson({ requested: true }, 200, origin);
-    }
-
-    if (request.method === "POST" && url.pathname === "/v1/auth/email") {
-      const user = await authenticatedUser(env, request);
-      if (!user) return authError("unauthorized", 401, origin);
-      const body = await readJson(request);
-      const email = normalizeEmail(body?.email);
-      if (!email) return authError("invalid_email", 400, origin);
-      if (!env.EMAIL || !env.EMAIL_FROM) return authError("email_service_unavailable", 503, origin);
-      const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
-      const now = Math.floor(Date.now() / 1000);
-      if (!await rateLimit(env, `verify-email:${user.user_id}:${ip}`, 3, now)) return authError("rate_limited", 429, origin);
-      const existing = await env.DB.prepare("SELECT id FROM users WHERE email = ? COLLATE NOCASE AND id != ?")
-        .bind(email, user.user_id).first<{ id: string }>();
-      if (existing) return authError("email_unavailable", 409, origin);
-      const verified = await env.DB.prepare("SELECT email, email_verified_at FROM users WHERE id = ?").bind(user.user_id).first<{ email: string | null; email_verified_at: number | null }>();
-      if (verified?.email?.toLowerCase() === email && verified.email_verified_at) return responseJson({ alreadyVerified: true }, 200, origin);
-      if (!await emailToken(env, user.user_id, email, "email_verify", url.origin)) return authError("email_delivery_failed", 503, origin);
-      return responseJson({ verificationRequired: true }, 202, origin);
-    }
-
-    if (request.method === "GET" && url.pathname === "/v1/auth/me") {
-      const user = await authenticatedUser(env, request);
-      if (!user) return authError("unauthorized", 401, origin);
-      const profile = await env.DB.prepare("SELECT username, profile_description, favorite_music, avatar_data, username_changed_at, email, email_verified_at FROM users WHERE id = ?")
-        .bind(user.user_id).first<ProfileRow & { email: string | null; email_verified_at: number | null }>();
-      return profile ? responseJson(privateProfile(profile), 200, origin) : authError("unauthorized", 401, origin);
-    }
-
-    if (request.method === "PUT" && url.pathname === "/v1/profile/me") {
-      const user = await authenticatedUser(env, request);
-      if (!user) return authError("unauthorized", 401, origin);
-      if (Number(request.headers.get("Content-Length") ?? 0) > 130_000) return authError("profile_too_large", 413, origin);
-      const body = await readJson(request, 130_000);
-      if (!body) return authError("invalid_request", 400, origin);
-      const username = normalizeUsername(body.username);
-      if (!username) return authError("invalid_username", 400, origin);
-      const description = typeof body.description === "string" ? body.description.trim() : null;
-      const favoriteMusic = typeof body.favoriteMusic === "string" ? body.favoriteMusic.trim() : null;
-      if (description === null || !validProfileText(description, 300)) return authError("invalid_profile_description", 400, origin);
-      if (favoriteMusic === null || !validProfileText(favoriteMusic, 120)) return authError("invalid_favorite_music", 400, origin);
-      if (!validAvatar(body.avatarData)) return authError("invalid_avatar", 400, origin);
-
-      const now = Math.floor(Date.now() / 1000);
-      const current = await env.DB.prepare("SELECT username_changed_at FROM users WHERE id = ?")
-        .bind(user.user_id).first<{ username_changed_at: number }>();
-      if (!current) return authError("unauthorized", 401, origin);
-      const renamed = username !== user.username;
-      if (renamed && current.username_changed_at + USERNAME_COOLDOWN_SECONDS > now) {
-        return responseJson({ error: "username_cooldown", availableAt: (current.username_changed_at + USERNAME_COOLDOWN_SECONDS) * 1000 }, 429, origin);
-      }
-      try {
-        await env.DB.prepare(
-          "UPDATE users SET username = ?, profile_description = ?, favorite_music = ?, avatar_data = ?, username_changed_at = CASE WHEN ? THEN ? ELSE username_changed_at END WHERE id = ?",
-        ).bind(username, description, favoriteMusic, body.avatarData, renamed ? 1 : 0, now, user.user_id).run();
-      } catch {
-        return authError("account_name_unavailable", 409, origin);
-      }
-      const updated = await env.DB.prepare("SELECT username, profile_description, favorite_music, avatar_data, username_changed_at, email, email_verified_at FROM users WHERE id = ?")
-        .bind(user.user_id).first<ProfileRow & { email: string | null; email_verified_at: number | null }>();
-      return updated ? responseJson(privateProfile(updated), 200, origin) : authError("profile_update_failed", 500, origin);
-    }
-
-    if (request.method === "GET" && url.pathname.startsWith("/v1/profiles/")) {
-      let requested: string;
-      try { requested = decodeURIComponent(url.pathname.slice("/v1/profiles/".length)); } catch { return authError("profile_not_found", 404, origin); }
-      const username = normalizeUsername(requested);
-      if (!username) return authError("profile_not_found", 404, origin);
-      const profile = await env.DB.prepare("SELECT username, profile_description, favorite_music, avatar_data, username_changed_at FROM users WHERE username = ?")
-        .bind(username).first<ProfileRow>();
-      return profile ? responseJson(publicProfile(profile), 200, origin) : authError("profile_not_found", 404, origin);
-    }
-
-    if (request.method === "GET" && url.pathname.startsWith("/p/")) {
-      let requested: string;
-      try { requested = decodeURIComponent(url.pathname.slice(3)); } catch { return responseJson({ error: "profile_not_found" }, 404, origin); }
-      const username = normalizeUsername(requested);
-      if (!username) return responseJson({ error: "profile_not_found" }, 404, origin);
-      const profile = await env.DB.prepare("SELECT username, profile_description, favorite_music, avatar_data, username_changed_at FROM users WHERE username = ?")
-        .bind(username).first<ProfileRow>();
-      return profile ? publicProfilePage(profile) : responseJson({ error: "profile_not_found" }, 404, origin);
-    }
-
-    if (request.method === "DELETE" && url.pathname === "/v1/auth/session") {
-      const token = bearerToken(request);
-      if (token) await env.DB.prepare("DELETE FROM auth_sessions WHERE token_hash = ?").bind(await sessionTokenHash(token)).run();
-      return responseJson({ loggedOut: true }, 200, origin);
     }
 
     if ((request.method === "POST" || request.method === "DELETE") && url.pathname === "/v1/first-launch") {
