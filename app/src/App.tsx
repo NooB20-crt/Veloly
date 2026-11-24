@@ -13,6 +13,7 @@ import { Recap } from "./recap";
 import { loadRecentSearches, recent, RecentSearches, rememberSearch } from "./recent";
 import { closeTrackMenu, collection, createPlaylist, dismissToast, loadCollection, notify, recentTracks, toast, trackMenu } from "./collection";
 import { handleBackButton, isMobile } from "./mobile";
+import { checkForUpdates, UpdateCard } from "./update-card";
 import { dismissSplash } from "./splash";
 import { matchesShortcut } from "./shortcuts";
 import { ImportDialog, SettingsView } from "./settings";
@@ -312,6 +313,7 @@ export default function App() {
     // Nettoyages enregistrés avant tout `await`, sinon Solid les perd.
     startFrames();
     void recordFirstLaunch();
+    void checkForUpdates();
     const unlisten = api.onPlayer(applySnap);
     const unlistenDiscover = listenDiscover();
     api.ytdlpStatus().then(setYtdlp).catch(() => {});
@@ -578,6 +580,7 @@ export default function App() {
             </button>
           </div>
         </Show>
+        <UpdateCard />
         <button classList={{ nav: true, "nav-settings": true, active: view() === "settings" }} title={t.settings} onClick={() => goTo("settings")}>
           <IconSettings />
           <span>{t.settings}</span>

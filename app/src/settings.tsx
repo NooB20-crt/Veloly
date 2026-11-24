@@ -12,6 +12,7 @@ import { IconClose, IconLink } from "./icons";
 import { lang, LANGUAGES, setLang, t, type Lang } from "./i18n";
 import { eventShortcut, resetShortcuts, setShortcut, shortcutLabel, shortcutMap, type ShortcutAction } from "./shortcuts";
 import { userError } from "./error-message";
+import { UpdateCard } from "./update-card";
 import { launchTelemetryAvailable, launchTelemetryEnabled, setLaunchTelemetryEnabled } from "./telemetry";
 
 /** Une ligne de réglage : intitulé, explication, et la commande à droite. */
@@ -128,6 +129,7 @@ export function SettingsView(props: { onImport: () => void; onLibrary: () => voi
 
   return (
     <div class="settings-page">
+      <div class="mobile-update-card"><UpdateCard /></div>
       <div class="page-head">
         <h1>{t.settings}</h1>
       </div>

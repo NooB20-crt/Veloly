@@ -2,6 +2,13 @@
 
 What's new in Veloly, version by version. The latest is at the top.
 
+## 0.4.4 — 2026-11-24
+
+### New
+
+- A short interactive first launch tour introduces Discover, your collection, playback and personalization.
+- Desktop update notifications install signed updates from inside Veloly. Android and iPhone/iPad show the platform's install or SideStore update flow.
+
 ## 0.4.3 — 2026-11-23
 
 ### Fixes

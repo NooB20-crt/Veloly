@@ -121,7 +121,7 @@ The version lives in `Cargo.toml`, `[workspace.package]`:
 git push && git push origin v0.2.0
 ```
 
-The "Publish a release" GitHub workflow then builds macOS and Windows, and creates the Release with `latest.json` for updates. It needs two secrets (Settings → Secrets and variables → Actions): `TAURI_SIGNING_PRIVATE_KEY` (contents of `~/.tauri/yato.key`) and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (contents of `~/.tauri/yato.key.password`). Without this key no update can ever be published again: keep it safe.
+The "Publish a release" GitHub workflow builds macOS and Windows and creates `latest.json` for signed desktop updates. Keep the private updater key at `~/.tauri/veloly-updater.key` and add its contents to the GitHub Actions secret `TAURI_SIGNING_PRIVATE_KEY`. Never commit or share that file. The public key is embedded in `app/src-tauri/tauri.conf.json`. Android updates download the full APK and use the Android installer; iPhone/iPad updates are offered by the Veloly source in SideStore.
 
 App icons: `app/src-tauri/icons/icon.png` is the source artwork. Run `npx tauri icon <source.png>` from `app/` to rebuild every platform size; `npm run icon:mac` rebuilds `icon.icns` from `icon-macos.svg`.
 

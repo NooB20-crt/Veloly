@@ -1,13 +1,12 @@
-# Publishes a 555 release: builds the app for macOS (Apple Silicon and Intel, one file) and
+# Publishes a Veloly release: builds the app for macOS (Apple Silicon and Intel, one file) and
 # Windows, creates the GitHub Release for the tag with the installers, and `latest.json`,
-# which 555 reads for its automatic updates. Then adds the Android APK to the same release, and
+# which Veloly reads for its automatic desktop updates. Then adds the Android APK to the same release, and
 # the iPhone/iPad .ipa with its SideStore source (`555-sidestore.json`: SideStore reads it to
 # offer the update on the phone).
 #
 # To publish: `./scripts/release.sh 0.2.0`, then push the commit and the tag.
 # Required secrets (Settings → Secrets and variables → Actions):
-#   TAURI_SIGNING_PRIVATE_KEY           contents of ~/.tauri/yato.key
-#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  contents of ~/.tauri/yato.key.password
+#   TAURI_SIGNING_PRIVATE_KEY           contents of ~/.tauri/veloly-updater.key
 #   ANDROID_KEYSTORE_BASE64             base64 of ~/.tauri/555-android.jks (signs the APK)
 #   ANDROID_KEYSTORE_PASSWORD           contents of ~/.tauri/555-android.password
 name: Publish a release
@@ -83,7 +82,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: app
           tagName: ${{ github.ref_name }}
@@ -93,12 +91,12 @@ jobs:
 
             ---
 
-            **macOS**: `555_…_universal.dmg` (Apple Silicon and Intel). The app isn't signed by Apple: on first launch, right-click 555 → “Open”, or run `xattr -cr /Applications/555.app`.
-            **Windows**: `555_…_x64-setup.exe`. If Windows says “Windows protected your PC”: “More info” → “Run anyway”.
-            **Android** (8 or later): `555_…_android.apk`. Open it on the phone and allow your browser or file manager to install apps. 555 isn't on the Play Store, so Play Protect may warn you: “More details” → “Install anyway”. To update, install the new APK over the old one.
-            **iPhone and iPad** (iOS 15 or later): `555_…_ios.ipa`, installed with SideStore. Guide: https://noob20-crt.github.io/Veloly/ios.html
+            **macOS**: `Veloly_…_universal.dmg` (Apple Silicon and Intel). The app isn't signed by Apple: on first launch, right-click Veloly → “Open”.
+            **Windows**: `Veloly_…_x64-setup.exe`. If Windows says “Windows protected your PC”: “More info” → “Run anyway”. Future desktop updates are signed and offered inside Veloly.
+            **Android** (8 or later): `Veloly_…_android.apk`. Open it on the phone and allow your browser or file manager to install apps. Android may ask you to confirm each update.
+            **iPhone and iPad** (iOS 15 or later): `Veloly_…_ios.ipa` is installed and updated through SideStore. Guide: https://zyndrax707.github.io/Veloly/ios.html
 
-            Once installed, 555 updates itself (on iPhone, SideStore offers the update).
+            Veloly checks for updates. On iPhone, SideStore handles installation and updates.
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
@@ -162,7 +160,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           version="${GITHUB_REF_NAME#v}"
-          apk="555_${version}_android.apk"
+          apk="Veloly_${version}_android.apk"
           cp app/src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk "$apk"
           gh release upload "$GITHUB_REF_NAME" "$apk" --clobber
 
@@ -209,7 +207,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           version="${GITHUB_REF_NAME#v}"
-          ipa="555_${version}_ios.ipa"
+          ipa="Veloly_${version}_ios.ipa"
           mkdir Payload
           app_bundle=app/src-tauri/gen/apple/build/yato_iOS.xcarchive/Products/Applications/Veloly.app
           test -x "$app_bundle/Veloly"

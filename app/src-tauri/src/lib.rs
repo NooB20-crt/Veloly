@@ -719,7 +719,13 @@ fn ios_audio_session() {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     yato_core::timing::start();
-    let builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
+    let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init());
+    // Le plugin Tauri met à jour Windows/macOS. Sur mobile, la distribution passe par l'APK
+    // Android ou SideStore (le plugin officiel ne sait pas installer une mise à jour mobile).
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
     // Android : lecture écran éteint, notification et écran verrouillé.
     #[cfg(target_os = "android")]
     let builder = builder.plugin(android_media::plugin());

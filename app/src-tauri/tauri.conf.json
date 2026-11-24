@@ -21,11 +21,12 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' data: blob: https://e-cdns-images.dzcdn.net https://cdn-images.dzcdn.net https://cdns-images.dzcdn.net https://usercontent.jamendo.com https://lh3.googleusercontent.com https://yt3.ggpht.com https://yt3.googleusercontent.com https://i.ytimg.com https://i.scdn.co https://mosaic.scdn.co https://image-cdn-ak.spotifycdn.com http://cover.localhost cover:; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost https://*.workers.dev; font-src 'self' data:"
+      "csp": "default-src 'self'; img-src 'self' data: blob: https://e-cdns-images.dzcdn.net https://cdn-images.dzcdn.net https://cdns-images.dzcdn.net https://usercontent.jamendo.com https://lh3.googleusercontent.com https://yt3.ggpht.com https://yt3.googleusercontent.com https://i.ytimg.com https://i.scdn.co https://mosaic.scdn.co https://image-cdn-ak.spotifycdn.com http://cover.localhost cover:; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost https://*.workers.dev https://api.github.com; font-src 'self' data:"
     }
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": [
       "app",
       "dmg",
@@ -43,6 +44,17 @@
     },
     "iOS": {
       "minimumSystemVersion": "15.0"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDcwQTQwNzVFRjI5QUIwQ0IKUldUTHNKcnlYZ2VrY0NOR0FHcCttMFczVEljVzZKbUcrdFlySHZLUUhEZ25sblE1VUlNcG1yN3MK",
+      "endpoints": [
+        "https://github.com/zyndrax707/Veloly/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }
