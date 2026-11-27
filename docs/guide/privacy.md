@@ -6,6 +6,10 @@ Veloly does not require an account. Your library collection, preferences, and pl
 
 Network requests are needed for online search and playback, artwork and metadata, lyrics, playlist link sharing, and checking for app updates. These requests may go to the corresponding service or to Veloly’s configured sharing/update infrastructure. Theme import, selection, and Custom CSS are local and do not contact 555.
 
+## Discord Rich Presence
+
+Discord status sharing is off by default and available on desktop only. When you enable it, Veloly sends the current song title, artist, album, an HTTPS cover URL when available, and playback timing to the Discord desktop client over local IPC. Discord may show this information on your profile according to your Discord activity-sharing settings. Turning the option off clears Veloly’s activity.
+
 ## Playlist links
 
 Sharing a playlist sends its track metadata to the link service so it can be opened by another person. Local audio files and their local paths are not uploaded.

@@ -16,6 +16,10 @@ Choose **Add to queue** to put a song near the front of the queue. Drag the hand
 
 Open lyrics from the player bar. Available synchronized lyrics follow playback; select a line to seek to that point when timing data is available. See the [lyrics guide](./lyrics).
 
+## Discord status
+
+On desktop, open **Settings → Discord** and enable **Show what I’m listening to**. Keep the Discord desktop app running. Veloly shares the current title, artist, cover URL, and playback timing with Discord while a song is playing. Turn the setting off to clear the activity. This option is not available on iOS or Android.
+
 ## Keyboard shortcuts
 
 Available shortcuts are listed in **Settings → Keyboard shortcuts**. They can vary by platform and can be changed there.
