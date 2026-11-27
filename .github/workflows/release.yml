@@ -15,9 +15,17 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing release tag to build, for example v0.4.7
+        required: true
+        type: string
 
 permissions:
   contents: write
+
+env:
+  RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
 
 jobs:
   build:
@@ -39,13 +47,15 @@ jobs:
       VITE_VELOLY_TELEMETRY_URL: ${{ vars.VELOLY_TELEMETRY_URL }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Check that the tag matches the version
         shell: bash
         run: |
           version=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\(.*\)"/\1/p' Cargo.toml)
-          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match version $version in Cargo.toml"
+          if [ "v$version" != "$RELEASE_TAG" ]; then
+            echo "::error::Tag $RELEASE_TAG does not match version $version in Cargo.toml"
             exit 1
           fi
 
@@ -54,7 +64,7 @@ jobs:
         id: notes
         shell: bash
         run: |
-          version="${GITHUB_REF_NAME#v}"
+          version="${RELEASE_TAG#v}"
           notes=$(awk -v v="$version" '/^## /{ if (f) exit; f = ($2 == v); next } f' CHANGELOG.md | sed -e '/./,$!d')
           if [ -z "$notes" ]; then
             echo "::warning::No section “## $version” in CHANGELOG.md: the release has no changelog."
@@ -85,8 +95,8 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         with:
           projectPath: app
-          tagName: ${{ github.ref_name }}
-          releaseName: Veloly ${{ github.ref_name }}
+          tagName: ${{ env.RELEASE_TAG }}
+          releaseName: Veloly ${{ env.RELEASE_TAG }}
           releaseBody: |
             ${{ steps.notes.outputs.body }}
 
@@ -112,6 +122,8 @@ jobs:
       NDK_VERSION: 29.0.14206865
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - uses: actions/setup-java@v4
         with:
@@ -160,10 +172,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          version="${GITHUB_REF_NAME#v}"
+          version="${RELEASE_TAG#v}"
           apk="Veloly_${version}_android.apk"
           cp app/src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk "$apk"
-          gh release upload "$GITHUB_REF_NAME" "$apk" --clobber
+          gh release upload "$RELEASE_TAG" "$apk" --clobber
 
   # iPhone and iPad: unsigned .ipa (each user's SideStore signs it with their own Apple Account),
   # and the SideStore source that points to it. SideStore reads the source from
@@ -176,6 +188,8 @@ jobs:
       VITE_VELOLY_TELEMETRY_URL: ${{ vars.VELOLY_TELEMETRY_URL }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - uses: actions/setup-node@v4
         with:
@@ -207,7 +221,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          version="${GITHUB_REF_NAME#v}"
+          version="${RELEASE_TAG#v}"
           ipa="Veloly_${version}_ios.ipa"
           mkdir Payload
           app_bundle=app/src-tauri/gen/apple/build/yato_iOS.xcarchive/Products/Applications/Veloly.app
@@ -224,10 +238,10 @@ jobs:
           jq -n \
             --arg version "$version" \
             --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            --arg url "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/$ipa" \
+            --arg url "https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/$ipa" \
             --argjson size "$(stat -f%z "$ipa")" \
             --arg notes "$notes" \
             -f .github/sidestore-source.jq > 555-sidestore.json
           cat 555-sidestore.json
 
-          gh release upload "$GITHUB_REF_NAME" "$ipa" 555-sidestore.json --clobber
+          gh release upload "$RELEASE_TAG" "$ipa" 555-sidestore.json --clobber
