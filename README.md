@@ -7,6 +7,7 @@
 <p align="center">
   A light, fast music player, written in Rust with Tauri.<br />
   <a href="https://zyndrax707.github.io/Veloly/">Website</a> ·
+  <a href="https://zyndrax707.github.io/Veloly/docs/">Documentation</a> ·
   <a href="https://github.com/zyndrax707/Veloly/releases/latest">Download</a>
 </p>
 
@@ -127,7 +128,7 @@ App icons: `app/src-tauri/icons/icon.png` is the source artwork. Run `npx tauri 
 
 ## Website
 
-The website lives in `site/` (a single static page) and is published to GitHub Pages by the "Publish the website" workflow on every push to `main` that touches it. One-time setup: Settings → Pages → Source: "GitHub Actions". Download links, version and stats come from the GitHub API, so nothing needs updating on release.
+The website and static documentation live in `site/` and are published to GitHub Pages by the "Publish the website" workflow on every push to `main` that touches them. The documentation is at `site/docs/`. One-time setup: Settings → Pages → Source: "GitHub Actions". Download links, version and stats come from the GitHub API, so nothing needs updating on release.
 
 ## Add a source
 
