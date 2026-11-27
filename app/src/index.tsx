@@ -4,6 +4,7 @@ import { render } from "solid-js/web";
 import "@fontsource-variable/unbounded";
 import "@fontsource-variable/manrope";
 import "./styles.css";
+import "./themes";
 
 async function start() {
   // Aperçu dans un navigateur, hors de Tauri : on simule le cœur Rust (développement seulement).

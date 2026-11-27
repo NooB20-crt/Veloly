@@ -1,6 +1,9 @@
 import type { Track } from "./api";
 
-const endpoint = (import.meta.env.VITE_VELOLY_TELEMETRY_URL as string | undefined)?.trim().replace(/\/$/, "");
+// Partage des playlists : ne dépend pas d'une variable de build facultative. Celle-ci reste
+// surchargeable pour les builds de développement ou les déploiements dérivés.
+const configuredEndpoint = (import.meta.env.VITE_VELOLY_TELEMETRY_URL as string | undefined)?.trim();
+const endpoint = (configuredEndpoint || "https://veloly-first-launch.veloly-zyndrax707.workers.dev").replace(/\/$/, "");
 
 export type SharedPlaylistTrack = {
   source: "deezer" | "youtube" | "jamendo" | "metadata";

@@ -2,6 +2,22 @@
 
 What's new in Veloly, version by version. The latest is at the top.
 
+## 0.4.7 — 2026-11-27
+
+### New
+
+- Add importable CSS themes and live Custom CSS, with a new Veloly documentation site and theme reference.
+- Add optional Discord Rich Presence on desktop: show the current song, artist, cover and playback progress.
+- Extend the equalizer with a presence band and Vocal, Rock and Acoustic presets.
+- Add local audio file import on Android and iPhone/iPad through the system file picker.
+
+### Improvements
+
+- Make playlist sharing work without a build-time service URL, while keeping custom endpoints configurable.
+- Improve the lyrics player layout and align its volume and queue controls beneath the main playback controls.
+- Refresh the app and website branding, including the Veloly mark and site favicon.
+- Remove the unused Jamendo client ID setting and keep custom colors consistent with the selected theme.
+
 ## 0.4.66 — 2026-11-24
 
 ### Changes

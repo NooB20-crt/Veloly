@@ -12,7 +12,7 @@ import { RecapCard, recapSeason, StatsView } from "./stats";
 import { Recap } from "./recap";
 import { loadRecentSearches, recent, RecentSearches, rememberSearch } from "./recent";
 import { closeTrackMenu, collection, createPlaylist, dismissToast, loadCollection, notify, recentTracks, toast, trackMenu } from "./collection";
-import { handleBackButton, isMobile } from "./mobile";
+import { handleBackButton, isAndroid, isIOS, isMobile } from "./mobile";
 import { checkForUpdates, UpdateCard } from "./update-card";
 import { dismissSplash } from "./splash";
 import { matchesShortcut } from "./shortcuts";
@@ -21,6 +21,7 @@ import { OfflineHelpDialog } from "./offline-help";
 import { WelcomeDialog } from "./welcome";
 import { applyCustomization } from "./customization";
 import { userError } from "./error-message";
+import { discordPresenceEnabled, setDiscordPresenceEnabled } from "./discord-presence";
 import { offlineMode, setOfflineMode } from "./offline-mode";
 import { recordFirstLaunch } from "./telemetry";
 import { LikedView, PlaylistView } from "./playlist";
@@ -61,6 +62,29 @@ export default function App() {
   const expanded = () => np() === "opening" || np() === "open";
   let npTimer: number | undefined;
   let searchInput!: HTMLInputElement;
+  let lastDiscordPresenceKey = "";
+
+  createEffect(() => {
+    if (isMobile()) return;
+    const state = snap();
+    const enabled = discordPresenceEnabled();
+    const track = state.track;
+    const positionBucket = state.status === "playing" ? Math.floor(state.position / 15) : Math.floor(state.position);
+    const key = `${enabled}|${track?.id ?? ""}|${track?.title ?? ""}|${track?.artist ?? ""}|${track?.artwork ?? ""}|${state.status}|${positionBucket}|${state.duration ?? ""}|${state.speed}`;
+    if (key === lastDiscordPresenceKey) return;
+    lastDiscordPresenceKey = key;
+    void api.setDiscordPresence({
+      enabled,
+      title: track?.title ?? null,
+      artist: track?.artist ?? null,
+      album: track?.album ?? null,
+      artwork: track?.artwork?.startsWith("https://") ? track.artwork : null,
+      status: state.status,
+      position: state.position,
+      duration: state.duration,
+      speed: state.speed,
+    }).catch(() => {});
+  });
 
   // ---------- Fiches (artistes, albums) ----------
   // Historique pour « Retour » : la vue d'où l'on vient, et la fiche qu'elle montrait.
@@ -319,6 +343,7 @@ export default function App() {
     api.ytdlpStatus().then(setYtdlp).catch(() => {});
     api.getSettings().then((s) => {
       setOfflineMode(s.offlineOnly);
+      setDiscordPresenceEnabled(s.discordPresence);
       applyCustomization(s.customization);
     }).catch(() => {});
     window.addEventListener("keydown", onKey);
@@ -512,8 +537,29 @@ export default function App() {
       setScanning(false);
     }
   };
+  const usesMobileFilePicker = () => isAndroid || isIOS;
+  const chooseMobileAudioFiles = async () => {
+    const selected = await open({
+      multiple: true,
+      pickerMode: "document",
+      fileAccessMode: "copy",
+      title: t.chooseAudioFiles,
+      filters: [{
+        name: "Audio",
+        extensions: ["mp3", "flac", "ogg", "oga", "m4a", "mp4", "aac", "wav", "aif", "aiff", "caf", "mka", "webm"],
+      }],
+    });
+    return Array.isArray(selected) ? selected : selected ? [selected] : [];
+  };
   const addFolder = async () => {
     try {
+      if (usesMobileFilePicker()) {
+        const files = await chooseMobileAudioFiles();
+        if (!files.length) return;
+        await withScan(() => api.importAudioFiles(files));
+        goTo("library");
+        return;
+      }
       const dir = await open({ directory: true, multiple: false, title: t.chooseFolder });
       if (typeof dir !== "string") return;
       await withScan(() => api.addFolder(dir));
@@ -528,6 +574,15 @@ export default function App() {
   };
   const repairFolder = async (oldPath: string) => {
     try {
+      if (usesMobileFilePicker()) {
+        const files = await chooseMobileAudioFiles();
+        if (!files.length) return;
+        await withScan(async () => {
+          await api.importAudioFiles(files);
+          await api.removeFolder(oldPath);
+        });
+        return;
+      }
       const dir = await open({ directory: true, multiple: false, title: t.chooseFolder });
       if (typeof dir !== "string") return;
       await withScan(async () => {
@@ -551,7 +606,7 @@ export default function App() {
 
       <aside class="sidebar">
         <button class="brand" onClick={() => goTo("discover")} title={t.home}>
-          <img src="/wordmark.svg" alt="Veloly" height="26" />
+          <img src="/veloly-mark.png" alt="Veloly" width="32" height="32" />
         </button>
         <SideNav
           active={view() === "playlist" ? `pl:${playlistId()}` : view()}
@@ -592,7 +647,7 @@ export default function App() {
       <main class="main">
         <header class="topbar">
           <button class="brand m-brand" onClick={() => selectTab("discover")} title={t.home}>
-            <img src="/wordmark.svg" alt="Veloly" height="22" />
+            <img src="/veloly-mark.png" alt="Veloly" width="28" height="28" />
           </button>
           <div class="search-wrap">
             <label class="search">
@@ -727,7 +782,7 @@ export default function App() {
                   )}
                 </For>
                 <button class="chip add" onClick={addFolder} disabled={scanning()}>
-                  <IconFolderPlus /> {scanning() ? t.scanning : t.addFolder}
+                  <IconFolderPlus /> {scanning() ? t.scanning : usesMobileFilePicker() ? t.addAudioFiles : t.addFolder}
                 </button>
               </div>
               <Show when={missingFiles() > 0 || missingFolders().length > 0}>
@@ -759,9 +814,9 @@ export default function App() {
                   <div class="empty-state">
                     <IconNote />
                     <h2>{t.libraryEmptyTitle}</h2>
-                    <p class="muted">{t.libraryEmptyText}</p>
+                    <p class="muted">{usesMobileFilePicker() ? t.libraryMobileEmptyText : t.libraryEmptyText}</p>
                     <button class="primary" onClick={addFolder} disabled={scanning()}>
-                      <IconFolderPlus /> {scanning() ? t.scanning : t.addFolder}
+                      <IconFolderPlus /> {scanning() ? t.scanning : usesMobileFilePicker() ? t.addAudioFiles : t.addFolder}
                     </button>
                   </div>
                 }

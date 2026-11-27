@@ -16,6 +16,9 @@ import { UpdateCard, UpdateSettings } from "./update-card";
 import { FeedbackDialog } from "./feedback";
 import { feedbackAvailable, launchTelemetryAvailable, launchTelemetryEnabled, setLaunchTelemetryEnabled } from "./telemetry";
 import { isAndroid, isIOS } from "./mobile";
+import { ThemesPanel } from "./theme-ui";
+import { clearCustomCss, customCss, setCustomCss } from "./themes";
+import { setDiscordPresenceEnabled } from "./discord-presence";
 
 /** Une ligne de réglage : intitulé, explication, et la commande à droite. */
 function Row(props: { title: string; hint?: string; children?: JSX.Element }) {
@@ -79,11 +82,13 @@ export function SettingsView(props: { onImport: () => void; onLibrary: () => voi
     // Les effets se règlent ailleurs (égaliseur) : on garde toujours leur valeur la plus récente.
     const next = { ...cur, ...patch, fx: fx() };
     setSettings(next);
+    if (patch.discordPresence !== undefined) setDiscordPresenceEnabled(patch.discordPresence);
     if (patch.customization) applyCustomization(next.customization);
     try {
       setSettings(await api.setSettings(next));
     } catch (e) {
       setSettings(cur);
+      if (patch.discordPresence !== undefined) setDiscordPresenceEnabled(cur.discordPresence);
       if (patch.customization) applyCustomization(cur.customization);
       notify(userError(e), "error");
     }
@@ -197,6 +202,15 @@ export function SettingsView(props: { onImport: () => void; onLibrary: () => voi
               </Row>
             </section>
 
+            <Show when={!isAndroid && !isIOS}>
+              <section class="settings-group">
+                <h2 class="section-title">{t.discord}</h2>
+                <Row title={t.discordPresence} hint={t.discordPresenceHint}>
+                  <Toggle on={s().discordPresence} label={t.discordPresence} onChange={(enabled) => change({ discordPresence: enabled })} />
+                </Row>
+              </section>
+            </Show>
+
             <section class="settings-group">
               <h2 class="section-title">{t.customization}</h2>
               <Row title={t.primaryColor} hint={t.primaryColorHint}>
@@ -219,6 +233,27 @@ export function SettingsView(props: { onImport: () => void; onLibrary: () => voi
               <Row title={t.glowEffects} hint={t.glowEffectsHint}>
                 <Toggle on={glowEnabled()} label={t.glowEffects} onChange={changeGlow} />
               </Row>
+              <ThemesPanel />
+              <div class="settings-css">
+                <div class="settings-css-head">
+                  <div class="setting-text">
+                    <div class="setting-title">{t.customCss}</div>
+                    <div class="setting-hint">{t.customCssHint}</div>
+                  </div>
+                  <button class="ghost" onClick={clearCustomCss} disabled={!customCss().trim()}>{t.clearCustomCss}</button>
+                </div>
+                <textarea
+                  class="css-editor"
+                  rows={6}
+                  spellcheck={false}
+                  autocapitalize="off"
+                  autocomplete="off"
+                  placeholder={".np-title {\n  font-style: italic;\n}"}
+                  value={customCss()}
+                  onInput={(event) => setCustomCss(event.currentTarget.value)}
+                  aria-label={t.customCss}
+                />
+              </div>
             </section>
 
             <Show when={launchTelemetryAvailable()}>
@@ -297,23 +332,6 @@ export function SettingsView(props: { onImport: () => void; onLibrary: () => voi
 
             <section class="settings-group">
               <h2 class="section-title">{t.library}</h2>
-              <Row title={t.jamendoClientId} hint={t.jamendoClientIdHint}>
-                <input
-                  class="setting-text-input"
-                  type="text"
-                  value={s().jamendoClientId ?? ""}
-                  placeholder={t.jamendoClientIdPlaceholder}
-                  autocomplete="off"
-                  spellcheck={false}
-                  onBlur={(e) => {
-                    const value = e.currentTarget.value.trim() || null;
-                    if (value !== (s().jamendoClientId ?? null)) void change({ jamendoClientId: value });
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") e.currentTarget.blur();
-                  }}
-                />
-              </Row>
               <Row title={t.collectionBackup} hint={t.collectionBackupHint}>
                 <div class="actions">
                   <button class="ghost" onClick={exportBackup}>{t.exportBackup}</button>

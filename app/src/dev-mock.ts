@@ -317,7 +317,7 @@ const cleanQuery = (q: unknown) => String(q).trim().split(/\s+/).join(" ");
 
 // Collection en mémoire (perdue au rechargement de la page).
 const coll: Collection = { liked: [], playlists: [], history: [] };
-let settings: import("./api").Settings = { crossfade: 0, resume: true, offlineOnly: false, customization: { primaryColor: "#9718ed", secondaryColor: "#d17aff" }, outputProfiles: {}, outputDevice: null, fx: { preamp: 0, balance: 0, stereoWidth: 1, normalize: false, limiter: true, channelMode: "stereo", bass: 0, mid: 0, treble: 0, reverb: 0, speed: 1, radio: 0 } };
+let settings: import("./api").Settings = { crossfade: 0, resume: true, offlineOnly: false, discordPresence: false, customization: { primaryColor: "#9718ed", secondaryColor: "#d17aff" }, outputProfiles: {}, outputDevice: null, fx: { preamp: 0, balance: 0, stereoWidth: 1, normalize: false, limiter: true, channelMode: "stereo", bass: 0, mid: 0, presence: 0, treble: 0, reverb: 0, speed: 1, radio: 0 } };
 let plCounter = 0;
 const copy = (): Collection => structuredClone(coll);
 const pl = (id: string) => {
@@ -341,13 +341,14 @@ const handlers: Record<string, (args: any) => unknown> = {
   clear_recent_searches: () => writeRecent([]),
   clear_history: () => ((coll.history = []), copy()),
   get_settings: () => ({ ...settings }),
+  set_discord_presence: () => undefined,
   output_devices: () => ({ devices: DEVICES, selected: outputDevice, active: outputDevice ?? DEVICES[0].id }),
   set_output_device: ({ id }) => {
     const oldKey = outputDevice ?? "system";
     settings.outputProfiles[oldKey] = settings.fx;
     outputDevice = id;
     const nextKey = id ?? "system";
-    settings.fx = settings.outputProfiles[nextKey] ?? { ...settings.fx, preamp: 0, balance: 0, stereoWidth: 1, bass: 0, mid: 0, treble: 0, reverb: 0, speed: 1, radio: 0 };
+    settings.fx = settings.outputProfiles[nextKey] ?? { ...settings.fx, preamp: 0, balance: 0, stereoWidth: 1, bass: 0, mid: 0, presence: 0, treble: 0, reverb: 0, speed: 1, radio: 0 };
     return { devices: DEVICES, selected: id, active: id ?? DEVICES[0].id };
   },
   // Faux niveaux qui battent à ~120 BPM, pour voir le visualiseur sans le vrai son.

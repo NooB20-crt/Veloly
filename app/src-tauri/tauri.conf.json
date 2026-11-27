@@ -21,7 +21,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' data: blob: https://e-cdns-images.dzcdn.net https://cdn-images.dzcdn.net https://cdns-images.dzcdn.net https://usercontent.jamendo.com https://lh3.googleusercontent.com https://yt3.ggpht.com https://yt3.googleusercontent.com https://i.ytimg.com https://i.scdn.co https://mosaic.scdn.co https://image-cdn-ak.spotifycdn.com http://cover.localhost cover:; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost https://*.workers.dev https://api.github.com; font-src 'self' data:"
+      "csp": "default-src 'self'; img-src 'self' data: blob: https://e-cdns-images.dzcdn.net https://cdn-images.dzcdn.net https://cdns-images.dzcdn.net https://usercontent.jamendo.com https://lh3.googleusercontent.com https://yt3.ggpht.com https://yt3.googleusercontent.com https://i.ytimg.com https://i.scdn.co https://mosaic.scdn.co https://image-cdn-ak.spotifycdn.com http://cover.localhost cover:; style-src 'self' 'unsafe-inline' blob: https://fonts.googleapis.com; connect-src ipc: http://ipc.localhost https://*.workers.dev https://api.github.com; font-src 'self' data: https://fonts.gstatic.com"
     }
   },
   "bundle": {

@@ -1,7 +1,7 @@
 //! Effets et analyse du son.
 //!
 //! Chaque morceau passe dans [`FxSource`] avant d'arriver au lecteur :
-//! - un égaliseur 3 bandes (basses, médiums, aigus), en filtres biquad classiques (RBJ) ;
+//! - un égaliseur 4 bandes (basses, médiums, présence, aigus), en filtres biquad classiques (RBJ) ;
 //! - une réverbération légère (4 filtres en peigne et 2 passe-tout, à la Freeverb) ;
 //! - une mesure du niveau des basses, médiums et aigus, lue par l'interface pour le visualiseur.
 //!
@@ -45,6 +45,9 @@ pub struct FxSettings {
     pub bass: f32,
     /// Gain des médiums, en dB.
     pub mid: f32,
+    /// Gain de présence, autour de 3,5 kHz, en dB.
+    #[serde(default)]
+    pub presence: f32,
     /// Gain des aigus, en dB.
     pub treble: f32,
     /// Quantité de réverbération (0 à 1).
@@ -70,7 +73,7 @@ pub enum ChannelMode {
 
 impl Default for FxSettings {
     fn default() -> Self {
-        Self { preamp: 0.0, speed: 1.0, balance: 0.0, stereo_width: 1.0, normalize: false, limiter: true, channel_mode: ChannelMode::Stereo, bass: 0.0, mid: 0.0, treble: 0.0, reverb: 0.0, radio: 0.0 }
+        Self { preamp: 0.0, speed: 1.0, balance: 0.0, stereo_width: 1.0, normalize: false, limiter: true, channel_mode: ChannelMode::Stereo, bass: 0.0, mid: 0.0, presence: 0.0, treble: 0.0, reverb: 0.0, radio: 0.0 }
     }
 }
 
@@ -88,6 +91,7 @@ impl FxSettings {
             channel_mode: self.channel_mode,
             bass: db(self.bass),
             mid: db(self.mid),
+            presence: db(self.presence),
             treble: db(self.treble),
             reverb: if self.reverb.is_finite() { self.reverb.clamp(0.0, 1.0) } else { 0.0 },
             radio: if self.radio.is_finite() { self.radio.clamp(0.0, 1.0) } else { 0.0 },
@@ -119,6 +123,7 @@ pub struct Fx {
     channel_mode: AtomicU32,
     bass: AtomicF32,
     mid: AtomicF32,
+    presence: AtomicF32,
     treble: AtomicF32,
     reverb: AtomicF32,
     radio: AtomicF32,
@@ -140,6 +145,7 @@ impl Default for Fx {
             channel_mode: AtomicU32::new(0),
             bass: AtomicF32::default(),
             mid: AtomicF32::default(),
+            presence: AtomicF32::default(),
             treble: AtomicF32::default(),
             reverb: AtomicF32::default(),
             radio: AtomicF32::default(),
@@ -160,6 +166,7 @@ impl Fx {
         self.limiter.store(s.limiter, Ordering::Relaxed);
         self.channel_mode.store(match s.channel_mode { ChannelMode::Stereo => 0, ChannelMode::Mono => 1, ChannelMode::Left => 2, ChannelMode::Right => 3 }, Ordering::Relaxed);
         self.mid.set(s.mid);
+        self.presence.set(s.presence);
         self.treble.set(s.treble);
         self.reverb.set(s.reverb);
         self.radio.set(s.radio);
@@ -369,9 +376,9 @@ pub struct FxSource<S> {
     frame: Vec<f32>,
     frame_pos: usize,
     version: u64,
-    eq: [Biquad; 3],
-    /// État des 3 filtres, par canal.
-    eq_state: Vec<[[f32; 2]; 3]>,
+    eq: [Biquad; 4],
+    /// État des 4 filtres, par canal.
+    eq_state: Vec<[[f32; 2]; 4]>,
     eq_on: bool,
     reverb: Reverb,
     wet: f32,
@@ -410,8 +417,8 @@ impl<S: Source> FxSource<S> {
             frame: vec![0.0; channels],
             frame_pos: channels,
             version: u64::MAX,
-            eq: [Biquad::FLAT; 3],
-            eq_state: vec![[[0.0; 2]; 3]; channels],
+            eq: [Biquad::FLAT; 4],
+            eq_state: vec![[[0.0; 2]; 4]; channels],
             eq_on: false,
             reverb: Reverb::new(rate as f32),
             wet: 0.0,
@@ -444,9 +451,14 @@ impl<S: Source> FxSource<S> {
         }
         self.version = v;
         let r = self.rate as f32;
-        let (bass, mid, treble) = (self.fx.bass.get(), self.fx.mid.get(), self.fx.treble.get());
-        self.eq = [Biquad::low_shelf(120.0, bass, r), Biquad::peaking(1000.0, mid, 0.8, r), Biquad::high_shelf(6000.0, treble, r)];
-        self.eq_on = [bass, mid, treble].iter().any(|g| g.abs() >= 0.01);
+        let (bass, mid, presence, treble) = (self.fx.bass.get(), self.fx.mid.get(), self.fx.presence.get(), self.fx.treble.get());
+        self.eq = [
+            Biquad::low_shelf(120.0, bass, r),
+            Biquad::peaking(1000.0, mid, 0.8, r),
+            Biquad::peaking(3500.0, presence, 1.0, r),
+            Biquad::high_shelf(6000.0, treble, r),
+        ];
+        self.eq_on = [bass, mid, presence, treble].iter().any(|g| g.abs() >= 0.01);
         self.wet = self.fx.reverb.get();
         self.radio = self.fx.radio.get();
         self.preamp = 10.0f32.powf(self.fx.preamp.get() / 20.0);
@@ -485,7 +497,7 @@ impl<S: Source> FxSource<S> {
         self.stretch_pos = 0;
         self.stretch_written = 0;
         self.stretch_eof = false;
-        self.eq_state = vec![[[0.0; 2]; 3]; channels];
+        self.eq_state = vec![[[0.0; 2]; 4]; channels];
         self.radio_state = vec![[0.0; 4]; channels];
         self.reverb = Reverb::new(rate as f32);
         self.meter = Meter::new(rate as f32);

@@ -217,6 +217,8 @@ export interface Settings {
   resume: boolean;
   /** Ne lire que les fichiers audio disponibles sur cet appareil. */
   offlineOnly: boolean;
+  /** Publier facultativement le morceau en cours dans le statut Discord. */
+  discordPresence: boolean;
   /** Égaliseur, réverbération et vitesse. */
   fx: FxSettings;
   /** Sortie audio choisie ; `null` : celle du système. Se règle avec `setOutputDevice`. */
@@ -268,6 +270,8 @@ export interface FxSettings {
   /** Gains en dB, de -50 à +50. */
   bass: number;
   mid: number;
+  /** Gain de présence autour de 3,5 kHz, en dB. */
+  presence: number;
   treble: number;
   /** Réverbération, de 0 à 1. */
   reverb: number;
@@ -277,7 +281,7 @@ export interface FxSettings {
   radio: number;
 }
 
-export const FLAT_FX: FxSettings = { preamp: 0, balance: 0, stereoWidth: 1, normalize: false, limiter: true, channelMode: "stereo", bass: 0, mid: 0, treble: 0, reverb: 0, speed: 1, radio: 0 };
+export const FLAT_FX: FxSettings = { preamp: 0, balance: 0, stereoWidth: 1, normalize: false, limiter: true, channelMode: "stereo", bass: 0, mid: 0, presence: 0, treble: 0, reverb: 0, speed: 1, radio: 0 };
 
 /** Période résumée par les statistiques. */
 export type Period = { kind: "year"; year: number } | { kind: "month"; year: number; month: number } | { kind: "all" };
@@ -348,6 +352,7 @@ export const api = {
   libraryFolders: () => invoke<string[]>("library_folders"),
   libraryHealth: () => invoke<LibraryHealth>("library_health"),
   addFolder: (path: string) => invoke<number>("add_folder", { path }),
+  importAudioFiles: (paths: string[]) => invoke<number>("import_audio_files", { paths }),
   removeFolder: (path: string) => invoke<number>("remove_folder", { path }),
   rescan: () => invoke<number>("rescan"),
   search: (query: string, source?: string) => invoke<Track[]>("search", { query, source: source ?? null }),
@@ -406,6 +411,7 @@ export const api = {
   onCollection: (cb: (c: Collection) => void): Promise<UnlistenFn> => listen<Collection>("collection", (e) => cb(e.payload)),
   getSettings: () => invoke<Settings>("get_settings"),
   setSettings: (value: Settings) => invoke<Settings>("set_settings", { value }),
+  setDiscordPresence: (payload: DiscordPresencePayload) => invoke<void>("set_discord_presence", { payload }),
   setOfflineMode: (enabled: boolean) => invoke<Settings>("set_offline_mode", { enabled }),
   outputDevices: () => invoke<OutputDevices>("output_devices"),
   setOutputDevice: (id: string | null) => invoke<OutputDevices>("set_output_device", { id }),
@@ -417,6 +423,18 @@ export const api = {
     listen<Snapshot>("player", (e) => cb(e.payload)),
   ytdlpStatus: () => invoke<YtDlpStatus>("ytdlp_status"),
 };
+
+export interface DiscordPresencePayload {
+  enabled: boolean;
+  title: string | null;
+  artist: string | null;
+  album: string | null;
+  artwork: string | null;
+  status: Status;
+  position: number;
+  duration: number | null;
+  speed: number;
+}
 
 /** Les artistes d'un morceau, un par un (repli : découpe du texte « A, B & C feat. D »). */
 export function artistsOf(t: Track): ArtistRef[] {

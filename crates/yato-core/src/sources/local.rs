@@ -20,6 +20,8 @@ use crate::{ArtistRef, Location, MusicSource, Result, StreamData, Track};
 
 const AUDIO_EXTENSIONS: &[&str] = &[
     "mp3", "flac", "ogg", "oga", "m4a", "mp4", "aac", "wav", "aif", "aiff", "caf", "mka", "webm",
+    // Extension used for mobile documents whose content provider doesn't expose the filename.
+    "veloly-audio",
 ];
 const FOLDER_COVERS: &[&str] = &[
     "cover.jpg", "cover.png", "folder.jpg", "folder.png", "front.jpg", "front.png", "album.jpg",
@@ -223,7 +225,9 @@ pub fn scan_folders(folders: &[PathBuf]) -> Vec<Track> {
 }
 
 fn read_track(path: &Path) -> Option<Track> {
-    let file = lofty::read_from_path(path).ok()?;
+    // Guess from content as well as extension: Android/iOS document providers can return an
+    // opaque URI with no original suffix, so mobile imports use `.veloly-audio`.
+    let file = lofty::probe::Probe::open(path).ok()?.guess_file_type().ok()?.read().ok()?;
     let tag = file.primary_tag().or_else(|| file.first_tag());
 
     let clean = |s: std::borrow::Cow<'_, str>| {

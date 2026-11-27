@@ -872,6 +872,26 @@ html[data-vt="back"]::view-transition-new(page) { animation: blur-in-back 0.55s 
 .settings-page { max-width: 760px; }
 .settings-group { margin-top: 30px; }
 .settings-group .section-title { margin-bottom: 8px; }
+.settings-css { display: flex; flex-direction: column; gap: 10px; padding: 14px 18px 16px; background: var(--surface); border-radius: 6px; margin-top: 2px; }
+.settings-css-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.settings-css-head .setting-control { flex: none; }
+.css-editor {
+  display: block; width: 100%; min-height: 140px; resize: vertical; padding: 12px 14px; border: 0; outline: none;
+  border-radius: var(--r-md); color: var(--text); background: rgba(255, 255, 255, .035); box-shadow: var(--hairline);
+  font: 12.5px/1.55 ui-monospace, "SF Mono", Menlo, Consolas, monospace; tab-size: 2; user-select: text;
+}
+.css-editor:focus { box-shadow: var(--hairline), 0 0 0 2px color-mix(in srgb, var(--violet) 55%, transparent); }
+.css-editor::placeholder { color: var(--text-3); }
+.themes { display: flex; flex-direction: column; gap: 10px; padding: 14px 18px 12px; background: var(--surface); margin-top: 2px; }
+.theme-list { display: flex; flex-direction: column; gap: 2px; }
+.theme-row { display: flex; align-items: center; gap: 6px; border-radius: var(--r-sm); }
+.theme-row:hover { background: rgba(255, 255, 255, .04); }
+.theme-pick { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 9px 10px; text-align: left; }
+.theme-dot { width: 14px; height: 14px; border-radius: 50%; flex: none; box-shadow: inset 0 0 0 2px var(--text-3); transition: box-shadow .2s; }
+.theme-row.on .theme-dot { box-shadow: inset 0 0 0 4px var(--violet), 0 0 12px -2px var(--violet); }
+.theme-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.theme-author { color: var(--text-3); font-size: 12px; white-space: nowrap; }
+.theme-actions { flex-wrap: wrap; }
 .setting {
   display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 16px 18px;
   background: var(--surface); border-radius: 6px;
@@ -888,10 +908,10 @@ html[data-vt="back"]::view-transition-new(page) { animation: blur-in-back 0.55s 
 .update-settings-control { display: flex; align-items: center; gap: 12px; }
 .update-status { color: var(--text-2); font-size: 12px; white-space: nowrap; }
 .color-options { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 10px; }
-.color-swatch, .color-wheel { position: relative; display: block; width: 28px; height: 28px; flex: none; overflow: hidden; border: 2px solid transparent; border-radius: 50%; background: var(--swatch); cursor: pointer; box-shadow: inset 0 0 0 1px rgba(255,255,255,.12); }
-.color-swatch.selected, .color-wheel.selected { border-color: var(--text); box-shadow: 0 0 0 2px color-mix(in srgb, var(--text) 25%, transparent); }
-.color-wheel { background: conic-gradient(#ff3b30, #ffcc00, #34c759, #00c7be, #007aff, #af52de, #ff2d55, #ff3b30); }
-.color-wheel-input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.color-swatch, .color-wheel { position: relative; display: block; box-sizing: border-box; width: 28px; height: 28px; flex: none; overflow: hidden; border: 2px solid transparent; border-radius: 50%; background: var(--swatch); cursor: pointer; box-shadow: inset 0 0 0 1px rgba(255,255,255,.12); }
+.color-swatch.selected { border-color: var(--text); box-shadow: 0 0 0 2px color-mix(in srgb, var(--text) 25%, transparent); }
+.color-wheel { border: 0; background: conic-gradient(#ff3b30, #ffcc00, #34c759, #00c7be, #007aff, #af52de, #ff2d55, #ff3b30); box-shadow: inset 0 0 0 1px rgba(255,255,255,.24); }
+.color-wheel-input { position: absolute; inset: 0; box-sizing: border-box; width: 100%; height: 100%; padding: 0; border: 0; border-radius: 50%; background: transparent; appearance: none; -webkit-appearance: none; opacity: 0; cursor: pointer; }
 .color-options .custom-color-reset { margin-left: 4px; }
 .share-playlist-layer { z-index: 170; }
 .share-playlist-dialog { width: min(520px, 100%); }
@@ -1050,7 +1070,7 @@ textarea.dialog-input.multi { height: 130px; white-space: pre; overflow: auto; f
 
 .brand { font: 700 22px/1 var(--display); letter-spacing: -0.04em; gap: 10px; }
 .brand { padding: 4px 12px; }
-.brand img { width: auto; height: 26px; display: block; }
+.brand img { width: 32px; height: 32px; object-fit: contain; display: block; }
 .brand:hover img { transform: none; filter: drop-shadow(0 0 14px color-mix(in srgb, var(--violet-light) 80%, transparent)); }
 .brand img { transition: filter 0.5s var(--soft); }
 
@@ -1259,6 +1279,7 @@ textarea.dialog-input.multi { height: 130px; white-space: pre; overflow: auto; f
   .hero, .artist-head { flex-direction: column; align-items: center; text-align: center; gap: 18px; padding-top: 4px; }
   .hero-body, .artist-body { align-items: center; width: 100%; }
   .hero-play, .actions.hero-play { align-self: center; justify-content: center; }
+  .settings-css-head { align-items: flex-start; }
   .cover.xl, .album-cover, .pl-art.xl { width: min(62vw, 250px); height: min(62vw, 250px); }
   .artist-photo { width: min(52vw, 200px); height: min(52vw, 200px); }
   .hero-title, .album-title { font-size: 27px; }
@@ -1606,7 +1627,8 @@ textarea.dialog-input.multi { height: 130px; white-space: pre; overflow: auto; f
 
 /* Les paroles restent dégagées ; volume et file se rangent sous les commandes du lecteur. */
 .nowplaying.lyrics-mode .np-right { display: flex; flex-direction: column; }
-.nowplaying.lyrics-mode .np-actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
-.nowplaying.lyrics-mode .np-actions .volume { flex: 1 1 auto; min-width: 0; max-width: 260px; }
+.nowplaying.lyrics-mode .np-actions { display: flex; align-items: center; justify-content: center; gap: 16px; }
+.nowplaying.lyrics-mode .np-actions .control-queue { order: 0; flex: none; }
+.nowplaying.lyrics-mode .np-actions .volume { order: 1; flex: 0 1 220px; min-width: 0; max-width: 260px; }
 .nowplaying.lyrics-mode .np-actions .volume .slider { display: block; width: auto; min-width: 0; flex: 1; }
 .nowplaying.lyrics-mode .np-actions .eq-pop { flex: none; }

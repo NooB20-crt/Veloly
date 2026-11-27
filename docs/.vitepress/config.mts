@@ -9,11 +9,11 @@ export default defineConfig({
   appearance: 'force-dark',
   lastUpdated: true,
   head: [
-    ['link', { rel: 'icon', href: '/Veloly/assets/icon.svg', type: 'image/svg+xml' }],
+    ['link', { rel: 'icon', href: '/Veloly/assets/veloly-mark.png', type: 'image/png', sizes: '512x512' }],
     ['meta', { name: 'theme-color', content: '#000000' }],
   ],
   themeConfig: {
-    logo: { src: 'https://zyndrax707.github.io/Veloly/assets/icon.svg', alt: 'Veloly' },
+    logo: { src: 'https://zyndrax707.github.io/Veloly/assets/veloly-mark.png', alt: 'Veloly' },
     siteTitle: 'Docs',
     nav: [
       { text: 'Features', link: 'https://zyndrax707.github.io/Veloly/#features', target: '_self', noIcon: true },

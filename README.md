@@ -27,7 +27,7 @@
 
 ## Based on 555
 
-Veloly is based on [555](https://github.com/amonre555/555), created by its original author. The original project is available at [555.amon.lol](https://555.amon.lol/). Veloly is an independent modified version; see the [GPL-3.0-or-later license](LICENSE).
+Veloly is an independent modified version based on [555](https://github.com/amonre555/555), created by its original author. Veloly is not affiliated with or connected to the 555 project. It is distributed under the [GPL-3.0-or-later license](LICENSE); see [NOTICE.md](NOTICE.md) for preserved attribution.
 
 ## Features
 
@@ -128,7 +128,7 @@ App icons: `app/src-tauri/icons/icon.png` is the source artwork. Run `npx tauri 
 
 ## Website
 
-The website and static documentation live in `site/` and are published to GitHub Pages by the "Publish the website" workflow on every push to `main` that touches them. The documentation is at `site/docs/`. One-time setup: Settings → Pages → Source: "GitHub Actions". Download links, version and stats come from the GitHub API, so nothing needs updating on release.
+The website lives in `site/`; the VitePress documentation source lives in `docs/` and is built into `site/docs/`. Both are published to GitHub Pages by the "Publish the website" workflow on every push to `main` that touches either folder. One-time setup: Settings → Pages → Source: "GitHub Actions". Download links, version and stats come from the GitHub API, so nothing needs updating on release.
 
 ## Add a source
 

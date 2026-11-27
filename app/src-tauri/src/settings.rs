@@ -14,6 +14,8 @@ pub struct Settings {
     pub resume: bool,
     /// Ne lire que les fichiers audio présents sur l'appareil.
     pub offline_only: bool,
+    /// Publier facultativement le morceau en cours dans le statut Discord.
+    pub discord_presence: bool,
     /// Égaliseur, réverbération et vitesse.
     pub fx: yato_core::fx::FxSettings,
     /// Profil d'effets mémorisé pour chaque sortie audio.
@@ -56,7 +58,7 @@ fn sanitize_color(value: &mut String, fallback: &str) {
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { crossfade: 0.0, resume: true, offline_only: false, fx: Default::default(), output_profiles: BTreeMap::new(), output_device: None, jamendo_client_id: None, customization: Customization::default() }
+        Self { crossfade: 0.0, resume: true, offline_only: false, discord_presence: false, fx: Default::default(), output_profiles: BTreeMap::new(), output_device: None, jamendo_client_id: None, customization: Customization::default() }
     }
 }
 

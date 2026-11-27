@@ -8,17 +8,20 @@ import { fx, loadFx, patchFx, setFx } from "./fx-store";
 import { IconEq } from "./icons";
 import { t } from "./i18n";
 
-export const PRESETS: { id: "normal" | "slowed" | "spedUp" | "bass" | "radio" | "warm"; fx: FxSettings }[] = [
+export const PRESETS: { id: "normal" | "slowed" | "spedUp" | "bass" | "radio" | "warm" | "vocal" | "rock" | "acoustic"; fx: FxSettings }[] = [
   { id: "normal", fx: FLAT_FX },
   { id: "slowed", fx: { ...FLAT_FX, reverb: 0.45, speed: 0.85 } },
   { id: "spedUp", fx: { ...FLAT_FX, speed: 1.25 } },
   { id: "bass", fx: { ...FLAT_FX, bass: 8 } },
   { id: "radio", fx: { ...FLAT_FX, bass: -18, mid: 5, treble: -20, radio: 1 } },
   { id: "warm", fx: { ...FLAT_FX, bass: 3, mid: 2, treble: -3, reverb: 0.15 } },
+  { id: "vocal", fx: { ...FLAT_FX, bass: -1, mid: 2, presence: 4, treble: 1 } },
+  { id: "rock", fx: { ...FLAT_FX, bass: 4, mid: -1, presence: 3, treble: 2 } },
+  { id: "acoustic", fx: { ...FLAT_FX, bass: 1, mid: 1, presence: 2, treble: 2 } },
 ];
 
 const presetName = (id: (typeof PRESETS)[number]["id"]) =>
-  ({ normal: t.presetNormal, slowed: t.presetSlowed, spedUp: t.presetSpedUp, bass: t.presetBass, radio: t.presetRadio, warm: t.presetWarm })[id];
+  ({ normal: t.presetNormal, slowed: t.presetSlowed, spedUp: t.presetSpedUp, bass: t.presetBass, radio: t.presetRadio, warm: t.presetWarm, vocal: t.presetVocal, rock: t.presetRock, acoustic: t.presetAcoustic })[id];
 
 const sameFx = (a: FxSettings, b: FxSettings) =>
   (Object.keys(b) as (keyof FxSettings)[]).every((k) => {
@@ -69,6 +72,7 @@ function gainAt(c: Coefs, f: number): number {
 const BANDS = [
   { key: "bass", freq: 120 },
   { key: "mid", freq: 1000 },
+  { key: "presence", freq: 3500 },
   { key: "treble", freq: 6000 },
 ] as const;
 type BandKey = (typeof BANDS)[number]["key"];
@@ -86,7 +90,7 @@ const yOf = (db: number) => H / 2 - curveY(db) * (H / 2 - PAD_Y);
 const dbOf = (y: number) => curveDb((H / 2 - y) / (H / 2 - PAD_Y));
 
 function curve(s: FxSettings): string {
-  const filters = [shelf(120, s.bass, false), peaking(1000, s.mid, 0.8), shelf(6000, s.treble, true)];
+  const filters = [shelf(120, s.bass, false), peaking(1000, s.mid, 0.8), peaking(3500, s.presence, 1), shelf(6000, s.treble, true)];
   const pts: string[] = [];
   for (let i = 0; i <= 160; i++) {
     const f = 20 * 10 ** ((3 * i) / 160);
@@ -131,7 +135,7 @@ function EqGraph() {
     setActive(null);
   };
 
-  const label = (key: BandKey) => ({ bass: t.bass, mid: t.mid, treble: t.treble })[key];
+  const label = (key: BandKey) => ({ bass: t.bass, mid: t.mid, presence: t.presence, treble: t.treble })[key];
   const dbText = (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(1)} dB`;
 
   return (

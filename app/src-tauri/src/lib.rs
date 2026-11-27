@@ -3,13 +3,16 @@
 #[cfg(target_os = "android")]
 mod android_media;
 mod cover;
+mod discord_presence;
 #[cfg(any(desktop, target_os = "ios"))]
 mod media;
 mod settings;
 
 use std::{
     collections::HashSet,
+    io::Write,
     path::{Path, PathBuf},
+    str::FromStr,
     sync::Arc,
     time::Duration,
 };
@@ -30,6 +33,7 @@ use percent_encoding::percent_decode_str;
 use parking_lot::Mutex;
 use settings::Settings;
 use tauri::{Emitter, Manager, RunEvent, State, http};
+use tauri_plugin_fs::FsExt;
 
 type Res<T> = Result<T, Error>;
 
@@ -133,6 +137,75 @@ where
 #[tauri::command]
 async fn add_folder(state: State<'_, AppState>, path: PathBuf) -> Res<usize> {
     with_library(&state, move |lib| lib.add_folder(path)).await
+}
+
+/// Copie les fichiers choisis dans le sélecteur mobile dans l'espace privé de Veloly, puis les
+/// ajoute à la bibliothèque. Le plugin fs sait lire les `content://` Android et les URL iOS.
+#[tauri::command]
+async fn import_audio_files(app: tauri::AppHandle, state: State<'_, AppState>, paths: Vec<String>) -> Res<usize> {
+    if paths.len() > 250 {
+        return Err(Error::Other("Choose at most 250 audio files at a time".into()));
+    }
+    if paths.is_empty() {
+        return Ok(0);
+    }
+
+    let imported_dir = app.path().app_data_dir()
+        .map_err(|e| Error::Other(e.to_string()))?
+        .join("Veloly")
+        .join("Imported audio");
+    std::fs::create_dir_all(&imported_dir).map_err(|e| Error::Other(e.to_string()))?;
+
+    let fs_app = app.clone();
+    let target_dir = imported_dir.clone();
+    let copied = tauri::async_runtime::spawn_blocking(move || {
+        let mut copied = 0usize;
+        for (index, source) in paths.into_iter().enumerate() {
+            // Accept only file locations returned by the native picker, never arbitrary URL schemes.
+            if source.contains("://")
+                && !(source.starts_with("content://") || source.starts_with("file://"))
+            {
+                continue;
+            }
+            let source_path = match tauri_plugin_fs::FilePath::from_str(&source) {
+                Ok(path) => path,
+                Err(error) => {
+                    eprintln!("bibliothèque : chemin mobile ignoré : {error}");
+                    continue;
+                }
+            };
+            let mut input = match fs_app.fs().open(source_path, tauri_plugin_fs::OpenOptions::new()) {
+                Ok(file) => file,
+                Err(error) => {
+                    eprintln!("bibliothèque : fichier mobile ignoré : {error}");
+                    continue;
+                }
+            };
+            let stamp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |duration| duration.as_nanos());
+            let destination = target_dir.join(format!("audio-{stamp}-{index}.veloly-audio"));
+            let mut output = match std::fs::File::create(&destination) {
+                Ok(file) => file,
+                Err(error) => return Err(Error::Other(error.to_string())),
+            };
+            match std::io::copy(&mut input, &mut output) {
+                Ok(bytes) if bytes > 0 => copied += 1,
+                Ok(_) => { let _ = std::fs::remove_file(destination); }
+                Err(error) => {
+                    let _ = std::fs::remove_file(destination);
+                    eprintln!("bibliothèque : copie mobile ignorée : {error}");
+                }
+            }
+            let _ = output.flush();
+        }
+        Ok::<usize, Error>(copied)
+    }).await.map_err(|e| Error::Other(e.to_string()))??;
+
+    if copied == 0 {
+        return Err(Error::Other("No selected audio files could be imported".into()));
+    }
+    with_library(&state, move |lib| lib.add_folder(imported_dir)).await
 }
 
 #[tauri::command]
@@ -731,6 +804,7 @@ pub fn run() {
     yato_core::timing::start();
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init());
     // Le plugin Tauri met à jour Windows/macOS. Sur mobile, la distribution passe par l'APK
     // Android ou SideStore (le plugin officiel ne sait pas installer une mise à jour mobile).
@@ -938,6 +1012,7 @@ pub fn run() {
             library_folders,
             library_health,
             add_folder,
+            import_audio_files,
             remove_folder,
             rescan,
             search,
@@ -983,6 +1058,7 @@ pub fn run() {
             import_playlist,
             get_settings,
             set_settings,
+            discord_presence::set_discord_presence,
             set_offline_mode,
             audio_levels,
             set_shuffle,
