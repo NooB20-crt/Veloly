@@ -5,7 +5,7 @@ name: Publish the website
 on:
   push:
     branches: [main]
-    paths: ["site/**", ".github/workflows/pages.yml"]
+    paths: ["site/**", "docs/**", ".github/workflows/pages.yml"]
   workflow_dispatch:
 
 permissions:
@@ -28,6 +28,21 @@ jobs:
       - uses: actions/configure-pages@v5
         with:
           enablement: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+      - name: Install documentation dependencies
+        run: npm ci
+        working-directory: docs
+      - name: Build VitePress documentation
+        run: npm run build
+        working-directory: docs
+      - name: Add documentation to the website
+        run: |
+          mkdir -p site/docs
+          cp -R docs/.vitepress/dist/. site/docs/
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
